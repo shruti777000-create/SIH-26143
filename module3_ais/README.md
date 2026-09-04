@@ -61,7 +61,42 @@ Using Contract B's `estimated_origin`:
 
 ---
 
-## 3. How to Run Tests
+## 3. Phase 2 Implementation Highlights
+
+### A. Per-Vessel Trajectory Reconstruction (`trajectory.py`)
+- Groups cleaned AIS records by MMSI and sorts all points chronologically.
+- Preserves internal dataframe coordinates as `latitude` and `longitude`.
+- Gracefully handles single-point trajectories (`Point` geometry) and multi-point tracks (`LineString` geometry).
+- Exports standard GeoJSON features and `FeatureCollection` with strict `[longitude, latitude]` coordinate ordering.
+
+### B. Vessel-Level Feature Engineering (`features.py`)
+Computes 14 core attribution features per vessel:
+1. `mmsi`: Vessel identifier.
+2. `min_distance_to_origin_km`: Closest Point of Approach (CPA) to `estimated_origin.point` using spherical Haversine distance.
+3. `avg_speed_knots`: Mean Speed Over Ground (SOG).
+4. `max_speed_knots`: Maximum SOG observed.
+5. `speed_std`: Standard deviation of SOG (measures speed instability).
+6. `total_track_distance_km`: Cumulative great-circle distance along consecutive track waypoints.
+7. `ais_observation_count`: Total AIS pings for the vessel in the window.
+8. `stop_count`: Near-zero speed count ($SOG \le 0.5\text{ kn}$, loitering indicator).
+9. `avg_heading_change_deg`: Average Course Over Ground change with $360^\circ$ wraparound.
+10. `max_heading_change_deg`: Maximum acute heading deviation with $360^\circ$ wraparound.
+11. `closest_point_time_utc`: ISO-8601 UTC timestamp when vessel was at CPA.
+12. `time_difference_minutes`: Signed temporal delta $(T_{\text{CPA}} - T_{\text{origin}})$ in minutes.
+13. `cross_track_distance_km`: Minimum spherical perpendicular distance from vessel to Contract B backtrack corridor line segments.
+14. `trajectory_alignment_score`: Directional cosine alignment $\in [0.0, 1.0]$ between vessel movement vector / COG and net spill drift vector.
+
+### C. Heading Wraparound Formulation
+Computes acute compass angular changes across the North boundary ($359^\circ \to 1^\circ = 2^\circ$):
+$$\Delta h = |(h_2 - h_1 + 180) \pmod{360} - 180|$$
+
+### D. Backtrack Waypoint Time Interpolation
+Linearly interpolates timestamps for waypoints along the Contract B backtrack corridor without inventing data:
+$$T_k = T_{\text{origin}} + \frac{k}{N - 1}(T_{\text{det}} - T_{\text{origin}})$$
+
+---
+
+## 4. How to Run Tests
 
 From the repository root:
 
