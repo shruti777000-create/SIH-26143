@@ -147,10 +147,10 @@ def load_ais_data(
     """
     if isinstance(source, pd.DataFrame):
         df = source.copy()
-    elif isinstance(source, (str, Path)):
+    elif isinstance(source, (str, Path)) or hasattr(source, "read"):
         df = pd.read_csv(source, **read_csv_kwargs)
     else:
-        raise TypeError(f"Expected file path or pd.DataFrame, received: {type(source).__name__}")
+        raise TypeError(f"Expected file path, buffer, or pd.DataFrame, received: {type(source).__name__}")
 
     df = _normalize_column_names(df)
 
