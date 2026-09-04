@@ -1,0 +1,36 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+env/
+.env/
+.venv/
+
+# OpenDrift & Metocean Simulation NetCDFs
+*.nc
+temp_*.nc
+test_*.nc
+
+# Plots & Sanity Check Output (as requested)
+module2_drift/plots/*.png
+*.png
+
+# Local Data Directories & Metocean Downloads
+data/
+downloads/
+raw_data/
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE & Editor configurations
+.idea/
+.vscode/
+*.swp
+*.swo

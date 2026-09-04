@@ -1,0 +1,10 @@
+opendrift
+xarray
+netCDF4
+shapely
+geopandas
+matplotlib
+cartopy
+numpy
+scipy
+copernicusmarine
