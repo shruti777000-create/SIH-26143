@@ -54,6 +54,20 @@ class TestArabianSeaDrift(unittest.TestCase):
         is_valid, errors = validate_drift_output(res)
         self.assertTrue(is_valid, f"Schema validation failed: {errors}")
 
+    def test_seeding_modes_support(self):
+        slick = make_slick_geojson("TEST-AS-SEED-MODES-04", 72.75, 18.85, "2026-09-04T12:00:00Z", 0.00225)
+        # Test pure GeoJSON Polygon input with timestamp and seed_mode='centroid'
+        res_c = forecast_drift(slick["geometry"], timestamp="2026-09-04T12:00:00Z", seed_mode="centroid", current_nc_path=self.curr_nc, wind_nc_path=self.wind_nc, backtrack_hours=3, forecast_hours=[6, 24], num_particles=30)
+        is_valid_c, errors_c = validate_drift_output(res_c)
+        self.assertTrue(is_valid_c, f"Centroid seed validation failed: {errors_c}")
+        self.assertEqual(res_c["seed_mode"], "centroid")
+
+        # Test pure GeoJSON Polygon input with timestamp and seed_mode='distributed'
+        res_d = forecast_drift(slick["geometry"], timestamp="2026-09-04T12:00:00Z", seed_mode="distributed", current_nc_path=self.curr_nc, wind_nc_path=self.wind_nc, backtrack_hours=3, forecast_hours=[6, 24], num_particles=30)
+        is_valid_d, errors_d = validate_drift_output(res_d)
+        self.assertTrue(is_valid_d, f"Distributed seed validation failed: {errors_d}")
+        self.assertEqual(res_d["seed_mode"], "distributed")
+
 
 if __name__ == '__main__':
     unittest.main()

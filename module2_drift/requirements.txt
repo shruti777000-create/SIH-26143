@@ -1,10 +1,23 @@
+# Direct runtime dependencies
 opendrift
 xarray
 netCDF4
 shapely
+numpy
+fastapi
+uvicorn[standard]
+pydantic>=2.0
+python-multipart
+
+# Transitive dependencies of OpenDrift (pinned here to prevent accidental
+# version changes that break the OpenDrift import chain)
 geopandas
 matplotlib
 cartopy
-numpy
 scipy
+
+# Development / test-only dependencies
+# (consider moving to requirements-dev.txt before production deploy)
+pytest
+httpx
 copernicusmarine

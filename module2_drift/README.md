@@ -100,18 +100,18 @@ pip install -r module2_drift/requirements.txt
 ```python
 from module2_drift import forecast_drift
 
-slick_input = {
-    "slick_id": "SLICK-001",
-    "timestamp_utc": "2026-09-04T12:00:00Z",
-    "geometry": {
-        "type": "Polygon",
-        "coordinates": [[[72.0, 19.0], [72.02, 19.02], [72.01, 18.98], [72.0, 19.0]]]
-    }
+# Member 1 Detection GeoJSON Polygon output
+slick_polygon = {
+    "type": "Polygon",
+    "coordinates": [[[72.74775, 18.84775], [72.75225, 18.84775], [72.75225, 18.85225], [72.74775, 18.85225], [72.74775, 18.84775]]]
 }
+detection_time = "2026-09-04T12:00:00Z"
 
-# Run drift simulation using local NetCDF forcing files
-result = forecast_drift(
-    slick_json=slick_input,
+# Strategy A: Distributed seeding (Default - most realistic, spreads particles across polygon area)
+result_dist = forecast_drift(
+    slick_polygon=slick_polygon,
+    timestamp=detection_time,
+    seed_mode="distributed",     # "distributed" | "centroid"
     current_nc_path="arabian_sea_currents.nc",
     wind_nc_path="arabian_sea_winds.nc",
     backtrack_hours=12,
@@ -119,7 +119,44 @@ result = forecast_drift(
     num_particles=100
 )
 
-print(result["estimated_origin"])
+# Strategy B: Centroid seeding (Fast, simple - all particles originate at single polygon centroid)
+result_cent = forecast_drift(
+    slick_polygon=slick_polygon,
+    timestamp=detection_time,
+    seed_mode="centroid",
+    current_nc_path="arabian_sea_currents.nc",
+    wind_nc_path="arabian_sea_winds.nc",
+    backtrack_hours=12,
+    forecast_hours=[6, 24],
+    num_particles=100
+)
+
+print("Origin:", result_dist["estimated_origin"])
+```
+
+### Dynamic Metocean NetCDF Loading (`load_environment_data`)
+
+Instead of hardcoding a single NetCDF file, `load_environment_data()` dynamically scans local directories, catalogs available ocean current (`uo`, `vo`) and wind (`u10`, `v10`) datasets, and auto-selects the files matching the requested date and bounding box.
+
+```python
+from module2_drift import load_environment_data, DEFAULT_BBOX, MetoceanDateOutOfRangeError
+
+# 1. Load forcing data for a given date (defaults to Arabian Sea bbox: [71.0, 18.0, 73.5, 20.0])
+try:
+    env = load_environment_data(
+        date="2026-09-04T12:00:00Z",
+        bbox=DEFAULT_BBOX  # [min_lon, min_lat, max_lon, max_lat]
+    )
+    current_reader = env["current_reader"]
+    wind_reader = env["wind_reader"]
+    print("Loaded currents from:", env["current_file"])
+    print("Loaded winds from:", env["wind_file"])
+
+except MetoceanDateOutOfRangeError as e:
+    # Clear error showing which date ranges are actually available locally
+    print(f"Error: {e}")
+    for r in e.available_ranges:
+        print(f"  Available: {r['filename']} ({r['var_type']}) from {r['start_str']} to {r['end_str']}")
 ```
 
 ### Validate Output Schema
@@ -140,3 +177,91 @@ python -m unittest discover -s module2_drift/tests
 python module2_drift/plots/plot_drift.py
 ```
 *(Generated PNGs are saved to `module2_drift/plots/` and are excluded by `.gitignore`)*
+
+---
+
+## 5. REST API (`POST /api/drift`)
+
+The drift engine is also served as a FastAPI REST service, ready for integration with Member 4's dashboard.
+
+### Start the API Server
+
+```bash
+# From the project root:
+python api.py
+# or directly:
+uvicorn module2_drift.api:app --reload --port 8000
+```
+
+The server starts at **http://localhost:8000**. Interactive docs (Swagger UI) are at **http://localhost:8000/docs**.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check — confirms service is up |
+| `POST` | `/api/drift` | Run full drift pipeline (Contract A → Contract B) |
+
+### `POST /api/drift` — Request Body (Contract A)
+
+```json
+{
+  "slick_id": "SLICK-AS-MUMBAI-20260904-001",
+  "timestamp_utc": "2026-09-04T12:00:00Z",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [[
+      [72.748, 18.848],
+      [72.752, 18.848],
+      [72.752, 18.852],
+      [72.748, 18.852],
+      [72.748, 18.848]
+    ]]
+  },
+  "area_km2": 0.25,
+  "confidence": 0.94,
+  "seed_mode": "distributed",
+  "backtrack_hours": 12,
+  "forecast_hours": [6, 24],
+  "num_particles": 100
+}
+```
+
+### Test with curl
+
+```bash
+curl -X POST http://localhost:8000/api/drift \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slick_id": "SLICK-AS-MUMBAI-20260904-001",
+    "timestamp_utc": "2026-09-04T12:00:00Z",
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": [[[72.748,18.848],[72.752,18.848],[72.752,18.852],[72.748,18.852],[72.748,18.848]]]
+    },
+    "area_km2": 0.25,
+    "confidence": 0.94,
+    "seed_mode": "distributed",
+    "backtrack_hours": 12,
+    "forecast_hours": [6, 24],
+    "num_particles": 100
+  }'
+```
+
+### HTTP Error Codes
+
+| Code | Meaning |
+|------|---------|
+| `200` | Success — Contract B payload returned |
+| `400` | Invalid input: malformed polygon, out-of-range date, land/bbox violation |
+| `502` | Pipeline failure: metocean reader error or OpenDrift simulation crash near coastline |
+
+All errors return a structured JSON body:
+```json
+{
+  "error": true,
+  "error_type": "TEMPORAL_OUT_OF_BOUNDS",
+  "reason": "Requested date '2020-01-01' falls outside available local NetCDF data. Available local dataset ranges: ['arabian_sea_currents.nc' ...]",
+  "details": { "requested_date": "...", "available_ranges": [...] }
+}
+```

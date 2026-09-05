@@ -43,13 +43,23 @@ class TestContractSchema(unittest.TestCase):
         self.assertFalse(is_valid)
         self.assertTrue(any("must explicitly specify UTC zone" in e for e in errors))
 
-    def test_invalid_forecast_horizons(self):
+    def test_empty_forecast_polygons_invalid(self):
+        """forecast_polygons must contain at least 1 entry."""
         bad_data = json.loads(json.dumps(self.valid_data))
-        bad_data["forecast_polygons"][0]["hours_ahead"] = 12
-        bad_data["forecast_polygons"][1]["hours_ahead"] = 48
+        bad_data["forecast_polygons"] = []
         is_valid, errors = validate_drift_output(bad_data)
         self.assertFalse(is_valid)
-        self.assertTrue(any("exactly the 6-hour and 24-hour entries" in e for e in errors))
+        self.assertTrue(any("at least 1 entry" in e for e in errors))
+
+    def test_non_default_forecast_hours_accepted(self):
+        """Validator should accept any valid hours, not just {6, 24}."""
+        custom_data = json.loads(json.dumps(self.valid_data))
+        custom_data["forecast_polygons"][0]["hours_ahead"] = 12
+        custom_data["forecast_polygons"][1]["hours_ahead"] = 48
+        is_valid, errors = validate_drift_output(custom_data)
+        # Should NOT fail because of hours — only structural issues matter now
+        hour_errors = [e for e in errors if "6-hour and 24-hour" in e]
+        self.assertEqual(hour_errors, [], f"Unexpected hour constraint errors: {hour_errors}")
 
     def test_unclosed_polygon_ring(self):
         bad_data = json.loads(json.dumps(self.valid_data))

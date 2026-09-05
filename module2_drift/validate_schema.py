@@ -12,19 +12,32 @@ from shapely.geometry import shape, LineString, Polygon
 
 def validate_drift_output(output_data: Union[Dict[str, Any], str]) -> Tuple[bool, List[str]]:
     """
-    Validates output data against the exact team Contract B schema:
+    Validates output data against the team Contract B schema.
 
-    {
-      "slick_id": "string",
-      "estimated_origin": { "point": [lon, lat], "time_utc": "ISO8601 string" },
-      "backtrack_track": { "type": "LineString", "coordinates": [[lon, lat], ...] },
-      "forecast_polygons": [
-        { "hours_ahead": number, "geometry": {"type":"Polygon","coordinates": [...]} }
-      ]
-    }
+    Expected structure::
+
+        {
+          "slick_id": "string",
+          "estimated_origin": { "point": [lon, lat], "time_utc": "ISO8601 string" },
+          "backtrack_track": { "type": "LineString", "coordinates": [[lon, lat], ...] },
+          "forecast_polygons": [
+            {
+              "hours_ahead": number,
+              "geometry": {"type":"Polygon","coordinates": [...]},
+              "ensemble_size": number,        # optional — number of ensemble members
+              "ensemble_spread_km2": number   # optional — approx polygon area
+            }
+          ]
+        }
+
+    ``forecast_polygons`` must contain at least one entry; any positive
+    integer hour values are accepted (not restricted to {6, 24}).
+
+    Args:
+        output_data: Contract B dict or JSON string.
 
     Returns:
-      Tuple[bool, List[str]]: (is_valid, list_of_mismatch_messages)
+        Tuple[bool, List[str]]: (is_valid, list_of_mismatch_messages)
     """
     mismatches = []
 
@@ -132,13 +145,13 @@ def validate_drift_output(output_data: Union[Dict[str, Any], str]) -> Tuple[bool
             except Exception as e:
                 mismatches.append(f"Invalid GeoJSON LineString in 'backtrack_track': {e}")
 
-    # 5. Forecast Polygons (Strictly +6h and +24h)
+    # 5. Forecast Polygons (at least 1 required; typically +6h and +24h)
     polys = data["forecast_polygons"]
     if not isinstance(polys, list):
         mismatches.append(f"Key 'forecast_polygons' must be a list, got: {type(polys).__name__}")
     else:
-        if len(polys) != 2:
-            mismatches.append(f"'forecast_polygons' must contain exactly 2 entries (+6h and +24h), found: {len(polys)}")
+        if len(polys) < 1:
+            mismatches.append(f"'forecast_polygons' must contain at least 1 entry, found: {len(polys)}")
 
         hours_found = []
         for i, item in enumerate(polys):
@@ -194,9 +207,11 @@ def validate_drift_output(output_data: Union[Dict[str, Any], str]) -> Tuple[bool
             except Exception as e:
                 mismatches.append(f"Invalid GeoJSON Polygon in 'forecast_polygons[{i}]': {e}")
 
-        if set(hours_found) != {6, 24}:
+        # Ensure at least one valid forecast hour entry was found
+        # (no longer restricted to exactly {6, 24} — any non-empty set is valid)
+        if not hours_found:
             mismatches.append(
-                f"'forecast_polygons' must contain exactly the 6-hour and 24-hour entries. Found hours: {hours_found}"
+                "'forecast_polygons' entries must each contain a numeric 'hours_ahead' value. None found."
             )
 
     is_valid = (len(mismatches) == 0)
