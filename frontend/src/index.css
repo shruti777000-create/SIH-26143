@@ -1,0 +1,389 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  width: 100%;
+  min-height: 100%;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+body {
+  background: #06131b;
+  color: #f3f7f9;
+}
+
+button,
+a {
+  font-family: inherit;
+}
+
+.maris-page {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #06131b;
+}
+
+/* --------------------------------------------------
+   BACKGROUND
+-------------------------------------------------- */
+
+.hero-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+
+  background-image:
+    linear-gradient(
+      90deg,
+      rgba(3, 13, 20, 0.92) 0%,
+      rgba(3, 15, 23, 0.78) 38%,
+      rgba(3, 15, 23, 0.48) 70%,
+      rgba(3, 15, 23, 0.58) 100%
+    ),
+    url("/maris-tankers.jpg");
+
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+/* --------------------------------------------------
+   NAVBAR
+-------------------------------------------------- */
+
+.navbar {
+  position: relative;
+  z-index: 2;
+
+  height: 72px;
+  padding: 0 42px;
+
+  display: flex;
+  align-items: center;
+
+  border-bottom: 1px solid rgba(146, 193, 210, 0.16);
+  background: rgba(3, 12, 18, 0.68);
+  backdrop-filter: blur(7px);
+}
+
+/* Brand */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  min-width: 360px;
+}
+
+.brand-mark {
+  width: 38px;
+  height: 38px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid #20a8d1;
+  border-radius: 50%;
+
+  color: #20c8ee;
+  font-size: 19px;
+}
+
+.brand-text {
+  line-height: 1;
+}
+
+.brand-name {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+}
+
+.brand-subtitle {
+  margin-top: 5px;
+
+  font-size: 10px;
+  letter-spacing: 0.25px;
+
+  color: #9aaeb7;
+}
+
+/* Navigation */
+
+.nav-links {
+  flex: 1;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 27px;
+}
+
+.nav-links a {
+  position: relative;
+
+  padding: 8px 2px;
+
+  color: #9aaab2;
+  text-decoration: none;
+
+  font-size: 16px;
+  font-weight: 500;
+
+  transition: color 0.2s ease;
+}
+
+.nav-links a:hover,
+.nav-links a.active {
+  color: #e7f6fb;
+}
+
+.nav-links a.active::after {
+  content: "";
+
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+
+  height: 1px;
+
+  background: #22b9df;
+}
+
+/* Login */
+
+.login-button {
+  width: 72px;
+  height: 31px;
+
+  border: 1px solid #237ca0;
+  border-radius: 4px;
+
+  background: rgba(4, 28, 39, 0.65);
+  color: #d8edf3;
+
+  font-size: 11px;
+
+  cursor: pointer;
+}
+
+.login-button:hover {
+  border-color: #32c7eb;
+  color: #ffffff;
+}
+
+/* --------------------------------------------------
+   HERO
+-------------------------------------------------- */
+
+.hero {
+  position: relative;
+  z-index: 1;
+
+  min-height: calc(100vh - 72px);
+
+  padding: 145px 7vw 48px;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.hero-content {
+  max-width: 670px;
+}
+
+.hero h1 {
+  margin: 0;
+
+  font-size: clamp(42px, 4.3vw, 65px);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -2.4px;
+
+  color: #f3f6f7;
+}
+
+.hero h1 span {
+  color: #25b7dc;
+}
+
+.hero p {
+  max-width: 520px;
+
+  margin: 25px 0 0;
+
+  color: #c0cdd2;
+
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+/* Buttons */
+
+.hero-actions {
+  display: flex;
+  gap: 13px;
+
+  margin-top: 30px;
+}
+
+.primary-button,
+.secondary-button {
+  height: 48px;
+  padding: 0 25px;
+
+  border-radius: 4px;
+
+  font-size: 13px;
+  font-weight: 500;
+
+  cursor: pointer;
+}
+
+.primary-button {
+  border: 1px solid #159dd0;
+  background: #087ec4;
+  color: white;
+}
+
+.primary-button:hover {
+  background: #0990d2;
+}
+
+.secondary-button {
+  border: 1px solid rgba(132, 176, 190, 0.55);
+  background: rgba(5, 22, 30, 0.45);
+  color: #d5e5e9;
+}
+
+.secondary-button:hover {
+  border-color: #25b7dc;
+}
+
+/* --------------------------------------------------
+   STATISTICS
+-------------------------------------------------- */
+
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+
+  gap: 12px;
+
+  width: min(760px, 100%);
+}
+
+.stat-card {
+  min-height: 77px;
+
+  display: flex;
+  align-items: center;
+  gap: 13px;
+
+  padding: 13px 15px;
+
+  border: 1px solid rgba(94, 151, 170, 0.18);
+  border-radius: 7px;
+
+  background: rgba(4, 22, 31, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.stat-icon {
+  width: 23px;
+  height: 23px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  color: #24bde4;
+
+  font-size: 18px;
+}
+
+.stat-value {
+  color: #edf4f6;
+
+  font-size: 17px;
+  font-weight: 600;
+
+  white-space: nowrap;
+}
+
+.stat-value.accent {
+  color: #25c2e8;
+}
+
+.stat-label {
+  margin-top: 5px;
+
+  color: #8fa5ae;
+
+  font-size: 9px;
+}
+
+.suspect-icon {
+  color: #e14b4b;
+}
+
+.suspect-card .stat-value {
+  color: #e4eaec;
+}
+
+/* --------------------------------------------------
+   RESPONSIVE
+-------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .brand {
+    min-width: auto;
+  }
+
+  .brand-subtitle {
+    display: none;
+  }
+
+  .nav-links {
+    gap: 14px;
+  }
+
+  .hero {
+    padding: 110px 5vw 40px;
+  }
+
+  .stats-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 650px) {
+  .navbar {
+    padding: 0 20px;
+    height: 82px;
+  }
+
+  .nav-links {
+    display: none;
+  }
+
+  .hero {
+    padding-top: 90px;
+  }
+
+  .hero h1 {
+    font-size: 42px;
+  }
+
+  .stats-row {
+    grid-template-columns: 1fr;
+  }
+}

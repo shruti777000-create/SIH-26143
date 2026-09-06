@@ -1,0 +1,878 @@
+/* =========================================
+   MARIS — ENVIRONMENTAL IMPACT
+   ========================================= */
+
+.impact-page {
+  min-height: 100vh;
+  display: flex;
+  background: #071018;
+  color: #e7eef0;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+
+/* =========================================
+   SIDEBAR
+   ========================================= */
+
+.impact-sidebar {
+  width: 218px;
+  min-width: 218px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #08121a;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.impact-brand {
+  height: 70px;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.impact-brand-mark {
+  width: 25px;
+  height: 25px;
+  border: 1px solid #6ed5df;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6ed5df;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.impact-brand-name {
+  color: #eef3f4;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.impact-brand-subtitle {
+  margin-top: 3px;
+  color: #64808a;
+  font-size: 9px;
+}
+
+.impact-nav {
+  padding: 20px 11px;
+}
+
+.impact-sidebar-item {
+  width: 100%;
+  height: 43px;
+  margin-bottom: 3px;
+  padding: 0 13px;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  border: 0;
+  background: transparent;
+  color: #81919a;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.impact-sidebar-item:hover {
+  color: #edf2f3;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.impact-sidebar-item.active {
+  color: #edf8f9;
+  background: rgba(91, 198, 207, 0.10);
+  border-left: 2px solid #67ced6;
+}
+
+.impact-sidebar-icon {
+  width: 18px;
+  text-align: center;
+  font-size: 16px;
+}
+
+.impact-system {
+  margin-top: auto;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.impact-system-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #63c8a7;
+}
+
+.impact-system strong {
+  display: block;
+  color: #c5d0d4;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.impact-system small {
+  display: block;
+  margin-top: 3px;
+  color: #62727b;
+  font-size: 9px;
+}
+
+
+/* =========================================
+   MAIN
+   ========================================= */
+
+.impact-main {
+  flex: 1;
+  min-width: 0;
+  padding: 34px 42px 45px;
+}
+
+.impact-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 27px;
+}
+
+.impact-kicker {
+  margin-bottom: 8px;
+  color: #667a84;
+  font-size: 11px;
+  letter-spacing: 1.7px;
+}
+
+.impact-header h1 {
+  margin: 0;
+  color: #f0f4f5;
+  font-size: 30px;
+  font-weight: 500;
+}
+
+.impact-header p {
+  margin: 8px 0 0;
+  color: #7d8e97;
+  font-size: 12px;
+}
+
+.impact-header-right {
+  padding-top: 4px;
+  text-align: right;
+}
+
+.impact-live {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 7px;
+  color: #7dd1c4;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.impact-live span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #62c9ac;
+}
+
+.impact-time {
+  margin-top: 8px;
+  color: #586b74;
+  font-size: 10px;
+}
+
+
+/* =========================================
+   SUMMARY
+   ========================================= */
+
+.impact-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: #0a151e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.impact-summary-item {
+  min-height: 105px;
+  padding: 17px 18px;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.impact-summary-item:last-child {
+  border-right: 0;
+}
+
+.impact-summary-item > span {
+  display: block;
+  color: #60747d;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.impact-summary-item strong {
+  display: block;
+  margin-top: 10px;
+  color: #d9e5e7;
+  font-size: 21px;
+  font-weight: 400;
+}
+
+.impact-summary-item small {
+  display: block;
+  margin-top: 5px;
+  color: #637780;
+  font-size: 8px;
+}
+
+.impact-high {
+  color: #d27676 !important;
+}
+
+
+/* =========================================
+   MAP + ASSESSMENT
+   ========================================= */
+
+.impact-layout {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  gap: 14px;
+}
+
+.impact-map-panel {
+  height: 520px;
+  min-width: 0;
+  background: #0a151e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.impact-map {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.impact-map .leaflet-container {
+  width: 100%;
+  height: 100%;
+  background: #09131a;
+}
+
+.leaflet-control-zoom {
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+.leaflet-control-zoom a {
+  background: #09151d !important;
+  color: #a7b7bc !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(5, 12, 17, 0.75) !important;
+  color: #63747c !important;
+  font-size: 8px !important;
+}
+
+.leaflet-control-attribution a {
+  color: #778d96 !important;
+}
+
+
+/* Map title */
+
+.impact-map-title {
+  position: absolute;
+  top: 15px;
+  left: 68px;
+  z-index: 500;
+  padding: 9px 12px;
+  background: rgba(5, 13, 18, 0.90);
+  border-left: 2px solid #66c9d0;
+}
+
+.impact-map-title span {
+  display: block;
+  color: #71858d;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.impact-map-title strong {
+  display: block;
+  margin-top: 4px;
+  color: #dce8e9;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+
+/* Legend */
+
+.impact-map-legend {
+  position: absolute;
+  left: 16px;
+  bottom: 17px;
+  z-index: 500;
+  min-width: 165px;
+  padding: 12px 13px;
+  background: rgba(5, 13, 18, 0.91);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.impact-legend-title {
+  margin-bottom: 9px;
+  color: #6e828a;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.impact-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+  color: #a1afb4;
+  font-size: 9px;
+}
+
+.impact-legend-box {
+  width: 20px;
+  height: 9px;
+  border: 1px solid;
+}
+
+.impact-legend-box.spill {
+  background: rgba(214, 108, 108, 0.35);
+  border-color: #d66c6c;
+}
+
+.impact-legend-box.zone {
+  background: rgba(196, 169, 101, 0.12);
+  border-color: #c4a965;
+}
+
+.impact-legend-line {
+  width: 22px;
+  height: 0;
+  border-top: 2px dashed;
+}
+
+.impact-legend-line.coast {
+  border-color: #66c7cf;
+}
+
+.impact-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.impact-legend-dot.origin {
+  background: #d65f5f;
+  border: 1px solid #fff;
+}
+
+.impact-map-label {
+  position: absolute;
+  right: 15px;
+  bottom: 15px;
+  z-index: 500;
+  color: #a8babf;
+  font-family: monospace;
+  font-size: 8px;
+}
+
+
+/* =========================================
+   ASSESSMENT PANEL
+   ========================================= */
+
+.impact-assessment {
+  height: 520px;
+  display: flex;
+  flex-direction: column;
+  background: #0a151e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.impact-panel-header {
+  min-height: 67px;
+  padding: 13px 17px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+}
+
+.impact-panel-header > div {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.impact-panel-header > div > span {
+  color: #5d7680;
+  font-size: 10px;
+}
+
+.impact-panel-header h2 {
+  margin: 0;
+  color: #dce6e8;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.impact-panel-header small {
+  color: #60747c;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.impact-rating {
+  padding: 15px 17px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.impact-rating > span {
+  display: block;
+  color: #60747d;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.impact-rating strong {
+  display: block;
+  margin-top: 7px;
+  color: #d27676;
+  font-size: 20px;
+  font-weight: 400;
+}
+
+.impact-rating p {
+  margin: 6px 0 0;
+  color: #6c7f87;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.impact-metric {
+  padding: 13px 17px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.impact-metric > span {
+  display: block;
+  color: #60747d;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.impact-metric-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+.impact-metric-value strong {
+  color: #d5e0e2;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.impact-metric-value small {
+  color: #68c5cc;
+  font-size: 9px;
+}
+
+.impact-progress {
+  height: 4px;
+  margin-top: 8px;
+  background: #1d292f;
+}
+
+.impact-progress div {
+  height: 100%;
+  background: #62c5cc;
+}
+
+.impact-metric p {
+  margin: 5px 0 0;
+  color: #657780;
+  font-size: 8px;
+  line-height: 1.4;
+}
+
+.impact-confidence {
+  margin: auto 17px 17px;
+  padding: 12px;
+  background: rgba(98, 197, 204, 0.035);
+  border-left: 2px solid #63c5cb;
+}
+
+.impact-confidence > div:first-child {
+  display: flex;
+  justify-content: space-between;
+}
+
+.impact-confidence span {
+  color: #60747d;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.impact-confidence strong {
+  color: #72cbd1;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.impact-confidence-bar {
+  height: 4px;
+  margin-top: 9px;
+  background: #202c31;
+}
+
+.impact-confidence-bar div {
+  width: 78%;
+  height: 100%;
+  background: #62c5cc;
+}
+
+.impact-confidence small {
+  display: block;
+  margin-top: 7px;
+  color: #637780;
+  font-size: 8px;
+}
+
+
+/* =========================================
+   INDICATORS
+   ========================================= */
+
+.impact-indicators,
+.impact-response {
+  margin-top: 14px;
+  background: #0a151e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.impact-section-heading {
+  min-height: 67px;
+  padding: 13px 17px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.065);
+}
+
+.impact-section-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.impact-section-heading > div > span {
+  color: #5d7680;
+  font-size: 10px;
+}
+
+.impact-section-heading h2 {
+  margin: 0;
+  color: #dce6e8;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.impact-section-heading p {
+  margin: 4px 0 0;
+  color: #657780;
+  font-size: 10px;
+}
+
+.impact-section-heading > small {
+  color: #60747c;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.impact-indicator-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.impact-indicator {
+  min-height: 175px;
+  padding: 17px;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.impact-indicator:last-child {
+  border-right: 0;
+}
+
+.indicator-number {
+  color: #60747d;
+  font-family: monospace;
+  font-size: 9px;
+}
+
+.impact-indicator > div:last-child > span {
+  color: #60747d;
+  font-size: 7px;
+  letter-spacing: 1px;
+}
+
+.impact-indicator h3 {
+  margin: 6px 0 6px;
+  color: #d7e2e4;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.impact-indicator strong {
+  color: #c4a965;
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.impact-indicator p {
+  margin: 9px 0 0;
+  color: #697c84;
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+
+/* =========================================
+   RESPONSE
+   ========================================= */
+
+.impact-response-content {
+  min-height: 145px;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 35px;
+  align-items: center;
+}
+
+.impact-response-text > span {
+  color: #60747d;
+  font-size: 8px;
+  letter-spacing: 1px;
+}
+
+.impact-response-text h3 {
+  margin: 8px 0 7px;
+  color: #dbe5e7;
+  font-size: 17px;
+  font-weight: 400;
+}
+
+.impact-response-text p {
+  max-width: 650px;
+  margin: 0;
+  color: #71838b;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.impact-response-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+}
+
+.impact-response-stats div {
+  padding-left: 13px;
+  border-left: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.impact-response-stats span {
+  display: block;
+  color: #60747d;
+  font-size: 7px;
+  letter-spacing: 1px;
+}
+
+.impact-response-stats strong {
+  display: block;
+  margin-top: 7px;
+  color: #d3dfe1;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+
+/* =========================================
+   FOOTER
+   ========================================= */
+
+.impact-footer {
+  margin-top: 14px;
+  min-height: 67px;
+  padding: 0 17px;
+  display: flex;
+  align-items: center;
+  gap: 38px;
+  background: #0a151e;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.impact-footer div span {
+  display: block;
+  color: #5f747c;
+  font-size: 7px;
+  letter-spacing: 0.9px;
+}
+
+.impact-footer div strong {
+  display: block;
+  margin-top: 5px;
+  color: #cbd8da;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.impact-footer button {
+  margin-left: auto;
+  padding: 9px 13px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(100, 200, 207, 0.3);
+  background: transparent;
+  color: #8ccdd1;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.impact-footer button:hover {
+  background: rgba(100, 200, 207, 0.06);
+}
+
+.impact-footer button span {
+  color: #8ccdd1;
+  font-size: 14px;
+}
+
+
+/* =========================================
+   RESPONSIVE
+   ========================================= */
+
+@media (max-width: 1150px) {
+
+  .impact-sidebar {
+    width: 190px;
+    min-width: 190px;
+  }
+
+  .impact-main {
+    padding: 28px;
+  }
+
+  .impact-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .impact-assessment {
+    height: auto;
+  }
+
+  .impact-confidence {
+    margin-top: 17px;
+  }
+
+  .impact-indicator-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .impact-indicator:nth-child(2) {
+    border-right: 0;
+  }
+
+}
+
+
+@media (max-width: 850px) {
+
+  .impact-sidebar {
+    width: 62px;
+    min-width: 62px;
+  }
+
+  .impact-brand {
+    padding: 0;
+    justify-content: center;
+  }
+
+  .impact-brand-name,
+  .impact-brand-subtitle,
+  .impact-sidebar-item span:last-child,
+  .impact-system {
+    display: none;
+  }
+
+  .impact-sidebar-item {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .impact-main {
+    padding: 22px;
+  }
+
+  .impact-header-right {
+    display: none;
+  }
+
+  .impact-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .impact-summary-item:nth-child(2) {
+    border-right: 0;
+  }
+
+  .impact-indicator-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .impact-indicator {
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  }
+
+  .impact-response-content {
+    grid-template-columns: 1fr;
+  }
+
+  .impact-footer {
+    flex-wrap: wrap;
+    padding: 15px;
+    gap: 18px;
+  }
+
+  .impact-footer button {
+    margin-left: 0;
+  }
+
+}
