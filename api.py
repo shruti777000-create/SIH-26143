@@ -1,5 +1,5 @@
 """
-FastAPI Server Entrypoint for Module 2 Oil Spill Drift Engine.
+FastAPI Server Entrypoint for AegisSlick.
 Run with:
     python api.py
 or:
@@ -7,7 +7,7 @@ or:
 """
 
 import uvicorn
-from module2_drift.api import app
+from backend.main import app
 
 if __name__ == "__main__":
-    uvicorn.run("module2_drift.api:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
