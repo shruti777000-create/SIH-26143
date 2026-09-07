@@ -160,11 +160,10 @@ def load_model():
         map_location=_device
     )
 
-    # Supports both a raw state_dict and a checkpoint dictionary.
-    if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-        state_dict = checkpoint["model_state_dict"]
-    else:
-        state_dict = checkpoint
+   if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+    state_dict = checkpoint["state_dict"]
+else:
+    state_dict = checkpoint
 
     model.load_state_dict(state_dict)
 
