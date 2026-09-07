@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from .oil_spill_detector import detect_spill
 
 app = FastAPI(title="MARIS API")
 
