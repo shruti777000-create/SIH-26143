@@ -1,0 +1,528 @@
+/* =========================================================
+   MARIS — INVESTIGATION PAGE
+   Typography and spacing matched to Landing Page
+   ========================================================= */
+
+.investigation-page {
+  min-height: 100vh;
+  display: flex;
+
+  background: #06131b;
+  color: #edf4f6;
+
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+
+/* =========================================================
+   SIDEBAR
+   ========================================================= */
+
+.investigation-sidebar {
+  width: 240px;
+  min-height: 100vh;
+  flex-shrink: 0;
+
+  display: flex;
+  flex-direction: column;
+
+  background: #06131b;
+  border-right: 1px solid rgba(100, 160, 180, 0.16);
+}
+
+
+/* BRAND */
+
+.side-brand {
+  height: 88px;
+  padding: 0 20px;
+
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  border-bottom: 1px solid rgba(100, 160, 180, 0.14);
+}
+
+.side-brand-mark {
+  width: 38px;
+  height: 38px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid #20b8df;
+  border-radius: 50%;
+
+  color: #20c4eb;
+  font-size: 20px;
+}
+
+.side-brand-name {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.side-brand-subtitle {
+  margin-top: 4px;
+
+  color: #91a6af;
+
+  font-size: 9px;
+}
+
+
+/* SIDEBAR MENU */
+
+.sidebar-menu {
+  padding: 22px 10px;
+}
+
+.sidebar-item {
+  width: 100%;
+  height: 48px;
+
+  display: flex;
+  align-items: center;
+  gap: 14px;
+
+  padding: 0 16px;
+
+  border: 0;
+  border-radius: 4px;
+
+  background: transparent;
+
+  color: #9aadb5;
+
+  font-size: 15px;
+  font-weight: 400;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  transition:
+    background 0.2s ease,
+    color 0.2s ease;
+}
+
+.sidebar-item:hover {
+  color: #eaf5f8;
+  background: rgba(20, 90, 110, 0.18);
+}
+
+.sidebar-item.active {
+  color: #28c3e9;
+
+  background: rgba(10, 105, 135, 0.24);
+
+  border-left: 2px solid #20bce3;
+}
+
+.sidebar-icon {
+  width: 22px;
+
+  text-align: center;
+
+  color: inherit;
+
+  font-size: 17px;
+}
+
+.sidebar-bottom {
+  margin-top: auto;
+  padding: 12px 10px;
+
+  border-top: 1px solid rgba(100, 160, 180, 0.12);
+}
+
+
+/* =========================================================
+   MAIN AREA
+   ========================================================= */
+
+.investigation-main {
+  flex: 1;
+  min-width: 0;
+
+  padding: 26px 30px 24px;
+
+  background:
+    radial-gradient(
+      circle at 60% 30%,
+      rgba(20, 100, 125, 0.08),
+      transparent 45%
+    ),
+    #07151d;
+}
+
+
+/* HEADER */
+
+.investigation-header {
+  height: 64px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.page-kicker {
+  margin-bottom: 5px;
+
+  color: #5e808c;
+
+  font-size: 11px;
+  letter-spacing: 1.2px;
+}
+
+.investigation-header h1 {
+  margin: 0;
+
+  color: #edf4f6;
+
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.live-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  padding: 9px 15px;
+
+  border: 1px solid rgba(38, 190, 222, 0.32);
+  border-radius: 4px;
+
+  color: #28c2e7;
+
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+
+  border-radius: 50%;
+
+  background: #28c2e7;
+}
+
+
+/* =========================================================
+   MAP
+   ========================================================= */
+
+.map-wrapper {
+  position: relative;
+
+  height: calc(100vh - 225px);
+  min-height: 540px;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(90, 151, 170, 0.2);
+  border-radius: 7px;
+
+  background: #06151d;
+}
+
+.maris-map {
+  width: 100%;
+  height: 100%;
+}
+
+
+/* DARKEN OPENSTREETMAP */
+
+.maris-map .leaflet-tile {
+  filter:
+    brightness(0.53)
+    saturate(0.72)
+    contrast(1.08);
+}
+
+
+/* LEAFLET ZOOM */
+
+.leaflet-control-zoom {
+  border: 1px solid rgba(100, 166, 184, 0.35) !important;
+}
+
+.leaflet-control-zoom a {
+  width: 34px !important;
+  height: 34px !important;
+
+  line-height: 34px !important;
+
+  background: #071b25 !important;
+  color: #d7e7eb !important;
+
+  border-color: rgba(100, 166, 184, 0.2) !important;
+
+  font-size: 19px !important;
+}
+
+
+/* =========================================================
+   FLOATING MAP PANELS
+   ========================================================= */
+
+.map-layers-panel,
+.quick-info-panel {
+  position: absolute;
+  z-index: 1000;
+
+  width: 230px;
+
+  padding: 17px;
+
+  border: 1px solid rgba(94, 157, 177, 0.28);
+  border-radius: 6px;
+
+  background: rgba(5, 20, 28, 0.95);
+
+  backdrop-filter: blur(8px);
+
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.map-layers-panel {
+  top: 18px;
+  right: 18px;
+}
+
+.quick-info-panel {
+  top: 230px;
+  right: 18px;
+}
+
+
+/* PANEL TITLE */
+
+.panel-heading {
+  margin-bottom: 12px;
+
+  color: #dcebed;
+
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.close-layer {
+  float: right;
+
+  color: #718791;
+
+  font-size: 18px;
+}
+
+
+/* LAYER ROW */
+
+.layer-row {
+  height: 32px;
+
+  display: flex;
+  align-items: center;
+  gap: 9px;
+
+  color: #a8bbc2;
+
+  font-size: 13px;
+
+  cursor: pointer;
+}
+
+.layer-row input {
+  width: 15px;
+  height: 15px;
+
+  accent-color: #1db5dc;
+}
+
+
+/* QUICK INFO */
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  padding: 9px 0;
+
+  border-top: 1px solid rgba(100, 160, 176, 0.1);
+
+  font-size: 12px;
+}
+
+.info-row span {
+  color: #7f969f;
+}
+
+.info-row strong {
+  color: #d2e4e8;
+
+  font-size: 12px;
+  font-weight: 500;
+}
+
+
+/* =========================================================
+   TOP SUSPECT
+   ========================================================= */
+
+.selected-vessel {
+  position: absolute;
+  z-index: 1000;
+
+  left: 45%;
+  bottom: 24%;
+
+  min-width: 155px;
+
+  padding: 13px 16px;
+
+  border: 1px solid rgba(235, 75, 75, 0.42);
+  border-radius: 5px;
+
+  background: rgba(10, 18, 23, 0.93);
+
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.25);
+}
+
+.selected-label {
+  color: #ef6464;
+
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 1px;
+}
+
+.selected-name {
+  margin-top: 6px;
+
+  color: #f1f5f6;
+
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.selected-score {
+  margin-top: 4px;
+
+  color: #9eb1b8;
+
+  font-size: 11px;
+}
+
+
+/* =========================================================
+   MAP LEGEND
+   ========================================================= */
+
+.map-legend {
+  position: absolute;
+  z-index: 1000;
+
+  left: 18px;
+  bottom: 18px;
+
+  display: flex;
+  gap: 18px;
+
+  padding: 11px 14px;
+
+  border: 1px solid rgba(90, 151, 170, 0.25);
+  border-radius: 5px;
+
+  background: rgba(5, 20, 28, 0.92);
+
+  color: #a9bbc1;
+
+  font-size: 11px;
+}
+
+.map-legend > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+
+  border-radius: 50%;
+}
+
+.spill-dot {
+  background: #19b9df;
+}
+
+.vessel-dot {
+  background: #23c0e5;
+}
+
+.legend-line {
+  width: 18px;
+  height: 2px;
+
+  background: #ef6464;
+}
+
+
+/* =========================================================
+   TIMELINE
+   ========================================================= */
+
+.timeline-panel {
+  margin-top: 10px;
+
+  padding: 13px 18px;
+
+  border: 1px solid rgba(90, 151, 170, 0.18);
+  border-radius: 6px;
+
+  background: #071923;
+}
+
+.timeline-top {
+  display: flex;
+  justify-content: space-between;
+
+  color: #78919b;
+
+  font-size: 11px;
+}
+
+.timeline-current {
+  color: #26c1e7;
+
+  font-weight: 500;
+}
+
+.timeline-slider {
+  width: 100%;
+
+  margin: 8px 0 3px;
+
+  accent-color: #20b5dc;
+
+  cursor: pointer;
+}
+
+.timeline-labels {
+  display: flex;
+  justify-content: space-between;
+
+  color: #718993;
+
+  font-size: 10px;
+}
