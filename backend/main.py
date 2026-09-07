@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .oil_spill_detector import detect_spill
@@ -19,25 +20,20 @@ app.add_middleware(
 # --------------------------------------------------
 
 @app.get("/api/detect")
-def detect_spill():
+def detect_spill_endpoint():
+    image_path = os.getenv("OIL_SPILL_IMAGE_PATH", "00204.tif")
+
+    result = detect_spill(image_path)
+
     return {
-        "slick_id": "slick_001",
+        "slick_id": "aegisslick_00204",
         "timestamp_utc": "2026-09-04T02:13:00Z",
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": [[
-                [80.20, 13.05],
-                [80.25, 13.05],
-                [80.30, 13.10],
-                [80.25, 13.15],
-                [80.20, 13.10],
-                [80.20, 13.05]
-            ]]
-        },
-        "area_km2": 12.4,
-        "length_km": 21.3,
-        "confidence": 0.91,
-        "source_image": "sentinel-1-demo.tif"
+        "detected": result["detected"],
+        "geometry": result["geometry"],
+        "area_km2": result["area_km2"],
+        "length_km": result["length_km"],
+        "confidence": result["confidence"],
+        "source_image": result["source_image"]
     }
 
 
