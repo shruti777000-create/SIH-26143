@@ -160,7 +160,9 @@ def load_model():
         map_location=_device
     )
 
-   if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+  if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+    state_dict = checkpoint["model_state_dict"]
+elif isinstance(checkpoint, dict) and "state_dict" in checkpoint:
     state_dict = checkpoint["state_dict"]
 else:
     state_dict = checkpoint
