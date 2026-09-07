@@ -162,7 +162,7 @@ def load_model():
 
     # Supports both a raw state_dict and a checkpoint dictionary.
     if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-        state_dict = checkpoint["state_dict"]
+        state_dict = checkpoint["model_state_dict"]
     else:
         state_dict = checkpoint
 
