@@ -1,13 +1,39 @@
+import copy
+from datetime import datetime, timezone
 import os
 from pathlib import Path
+import re
+import struct
+from typing import Any, Dict, Optional, Union
 
-import cv2
+try:
+    import cv2
+except ImportError:
+    cv2 = None
+
 import numpy as np
-import rasterio
-import torch
-import torch.nn as nn
-from shapely.geometry import Polygon
-from rasterio.warp import transform
+
+try:
+    import rasterio
+    from rasterio.warp import transform
+except ImportError:
+    rasterio = None
+    transform = None
+
+try:
+    import torch
+    import torch.nn as nn
+    _ModuleBase = nn.Module
+except ImportError:
+    torch = None
+    nn = None
+    _ModuleBase = object
+
+try:
+    from shapely.geometry import Polygon
+except ImportError:
+    Polygon = None
+
 
 
 # ============================================================
@@ -31,7 +57,7 @@ BATCH_SIZE = 4
 # This architecture matches the trained AegisSlick V2 model.
 # ============================================================
 
-class DoubleConv(nn.Module):
+class DoubleConv(_ModuleBase):
     def __init__(self, in_channels, out_channels):
         super().__init__()
 
@@ -59,7 +85,7 @@ class DoubleConv(nn.Module):
         return self.block(x)
 
 
-class UNet(nn.Module):
+class UNet(_ModuleBase):
     def __init__(self):
         super().__init__()
 
@@ -136,7 +162,10 @@ class UNet(nn.Module):
 # ============================================================
 
 _model = None
-_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+if torch is not None:
+    _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+else:
+    _device = "cpu"
 
 
 def load_model():
@@ -628,3 +657,327 @@ def detect_spill(image_path):
 
         "source_image": image_path.name
     }
+
+
+# ============================================================
+# CONTRACT A ADAPTER & METADATA EXTRACTION (PHASE 1A)
+# ============================================================
+
+def validate_slick_id(slick_id: str) -> str:
+    """Validate that slick_id is a non-empty string."""
+    if not isinstance(slick_id, str):
+        raise TypeError(f"slick_id must be a string, got {type(slick_id).__name__}")
+    cleaned = slick_id.strip()
+    if not cleaned:
+        raise ValueError("slick_id cannot be empty or whitespace.")
+    return cleaned
+
+
+def validate_timestamp_utc(timestamp_utc: str) -> str:
+    """
+    Validate that timestamp_utc is a valid ISO-8601 UTC timestamp string.
+    Rejects missing, malformed, naive, or non-UTC timestamps.
+    """
+    if not isinstance(timestamp_utc, str):
+        raise TypeError(f"timestamp_utc must be a string, got {type(timestamp_utc).__name__}")
+    cleaned = timestamp_utc.strip()
+    if not cleaned:
+        raise ValueError("timestamp_utc cannot be empty or whitespace.")
+
+    try:
+        dt = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+    except Exception as e:
+        raise ValueError(
+            f"'{timestamp_utc}' is not a valid ISO 8601 timestamp: {e}"
+        ) from e
+
+    if dt.tzinfo is None:
+        raise ValueError(
+            f"'{timestamp_utc}' lacks timezone information; must specify UTC (e.g. 'Z' or '+00:00')."
+        )
+
+    offset = dt.utcoffset()
+    if offset is not None and offset.total_seconds() != 0:
+        raise ValueError(
+            f"'{timestamp_utc}' has non-zero UTC offset ({offset}); must be UTC ('Z' or '+00:00')."
+        )
+
+    return cleaned
+
+
+def _parse_metadata_timestamp(val: str) -> Optional[str]:
+    """
+    Parse timestamp string from metadata tags into a standard ISO-8601 UTC string.
+    Returns None if parsing fails.
+    """
+    if not val or not isinstance(val, str):
+        return None
+    s = val.strip().strip("\x00")
+    if not s:
+        return None
+
+    # Format: TIFFTAG_DATETIME "YYYY:MM:DD HH:MM:SS"
+    tiff_match = re.match(r"^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$", s)
+    if tiff_match:
+        year, month, day, hour, minute, second = tiff_match.groups()
+        return f"{year}-{month}-{day}T{hour}:{minute}:{second}Z"
+
+    # Try ISO-8601 directly
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        pass
+
+    # Try common formats
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            dt = datetime.strptime(s, fmt).replace(tzinfo=timezone.utc)
+            return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        except Exception:
+            continue
+
+    return None
+
+
+def _read_tiff_tag_fallback(file_path: Path, target_tag: int) -> Optional[str]:
+    """
+    Pure Python fallback reader for ASCII tags from classic TIFF headers.
+    Supports little-endian ('II') and big-endian ('MM') TIFF files.
+    """
+    try:
+        if not file_path.exists() or not file_path.is_file():
+            return None
+        with open(file_path, "rb") as f:
+            header = f.read(8)
+            if len(header) < 8:
+                return None
+            order_bytes = header[:2]
+            if order_bytes == b"II":
+                endian = "<"
+            elif order_bytes == b"MM":
+                endian = ">"
+            else:
+                return None
+            magic = struct.unpack(endian + "H", header[2:4])[0]
+            if magic != 42:
+                return None
+            ifd_offset = struct.unpack(endian + "I", header[4:8])[0]
+            f.seek(ifd_offset)
+            num_entries_bytes = f.read(2)
+            if len(num_entries_bytes) < 2:
+                return None
+            num_entries = struct.unpack(endian + "H", num_entries_bytes)[0]
+            for _ in range(num_entries):
+                entry = f.read(12)
+                if len(entry) < 12:
+                    break
+                tag, dtype, count, val_or_offset = struct.unpack(endian + "HHI I", entry)
+                if tag == target_tag and dtype == 2:  # ASCII
+                    if count <= 4:
+                        val_raw = entry[8:8 + count]
+                        return val_raw.decode("latin1", errors="ignore").rstrip("\x00")
+                    else:
+                        cur_pos = f.tell()
+                        f.seek(val_or_offset)
+                        val_raw = f.read(count)
+                        f.seek(cur_pos)
+                        return val_raw.decode("latin1", errors="ignore").rstrip("\x00")
+    except Exception:
+        return None
+    return None
+
+
+def extract_geotiff_timestamp(image_path: Optional[Union[str, Path]]) -> Optional[str]:
+    """
+    Extract acquisition timestamp from GeoTIFF metadata if reliable tags exist.
+
+    Checks:
+    - ACQUISITION_START_TIME
+    - TIFFTAG_DATETIME
+
+    Returns ISO-8601 UTC string (e.g. '2026-09-04T12:00:00Z') or None if not found/unreliable.
+    Does NOT invent timestamps or use current system time.
+    """
+    if image_path is None:
+        return None
+
+    path = Path(image_path)
+    if not path.exists() or not path.is_file():
+        return None
+
+    # 1. Try rasterio if available
+    if rasterio is not None:
+        try:
+            with rasterio.open(path) as src:
+                tags = src.tags() or {}
+                for key in (
+                    "ACQUISITION_START_TIME",
+                    "acquisition_start_time",
+                    "TIFFTAG_DATETIME",
+                    "tifftag_datetime",
+                    "DATETIME",
+                ):
+                    val = tags.get(key)
+                    if val:
+                        parsed = _parse_metadata_timestamp(val)
+                        if parsed:
+                            return parsed
+
+                if hasattr(src, "tag_namespaces"):
+                    for ns in src.tag_namespaces():
+                        ns_tags = src.tags(ns=ns) or {}
+                        for key in (
+                            "ACQUISITION_START_TIME",
+                            "acquisition_start_time",
+                            "TIFFTAG_DATETIME",
+                            "tifftag_datetime",
+                        ):
+                            val = ns_tags.get(key)
+                            if val:
+                                parsed = _parse_metadata_timestamp(val)
+                                if parsed:
+                                    return parsed
+        except Exception:
+            pass
+
+    # 2. Try pure Python TIFF parser fallback
+    # Check standard TIFFTAG_DATETIME (tag 306 / 0x0132)
+    val_dt = _read_tiff_tag_fallback(path, 0x0132)
+    if val_dt:
+        parsed = _parse_metadata_timestamp(val_dt)
+        if parsed:
+            return parsed
+
+    # Check GDAL metadata XML (tag 42112 / 0xA480)
+    gdal_meta = _read_tiff_tag_fallback(path, 0xA480)
+    if gdal_meta:
+        m = re.search(r'name=["\'](?:ACQUISITION_START_TIME|acquisition_start_time)["\']>([^<]+)<', gdal_meta)
+        if m:
+            parsed = _parse_metadata_timestamp(m.group(1))
+            if parsed:
+                return parsed
+        m2 = re.search(r'name=["\'](?:TIFFTAG_DATETIME|tifftag_datetime)["\']>([^<]+)<', gdal_meta)
+        if m2:
+            parsed = _parse_metadata_timestamp(m2.group(1))
+            if parsed:
+                return parsed
+
+    return None
+
+
+def format_contract_a(
+    detection_result: Dict[str, Any],
+    slick_id: str,
+    timestamp_utc: Optional[str] = None,
+    image_path: Optional[Union[str, Path]] = None,
+) -> Dict[str, Any]:
+    """
+    Format a Member 1 detection dictionary into the official Contract A payload
+    required by Member 2 (module2_drift).
+
+    Parameters
+    ----------
+    detection_result : dict
+        Output dictionary from detect_spill() or a detection pipeline.
+    slick_id : str
+        Unique slick identifier. Must be non-empty string.
+    timestamp_utc : str, optional
+        ISO-8601 UTC timestamp of detection (e.g. '2026-09-04T12:00:00Z').
+        If None, attempts to extract reliable timestamp from image_path or
+        detection_result['source_image'].
+    image_path : str or Path, optional
+        Path to source GeoTIFF image to extract timestamp from if timestamp_utc is not provided.
+
+    Returns
+    -------
+    dict
+        Official Contract A payload containing only:
+        - slick_id: str
+        - timestamp_utc: str
+        - geometry: GeoJSON Polygon
+        - area_km2: Optional[float]
+        - confidence: Optional[float]
+
+    Raises
+    ------
+    ValueError
+        If slick_id is empty, timestamp_utc is missing or invalid, or detection_result
+        lacks a valid Polygon geometry.
+    TypeError
+        If detection_result is not a dictionary or slick_id is not a string.
+    """
+    if not isinstance(detection_result, dict):
+        raise TypeError(f"detection_result must be a dict, got {type(detection_result).__name__}")
+
+    clean_slick_id = validate_slick_id(slick_id)
+
+    resolved_ts = timestamp_utc
+    if not resolved_ts:
+        target_img = image_path
+        if not target_img:
+            target_img = detection_result.get("source_image")
+        if target_img:
+            resolved_ts = extract_geotiff_timestamp(target_img)
+
+    if not resolved_ts:
+        raise ValueError(
+            "timestamp_utc is required for Contract A and could not be determined "
+            "from image metadata. Caller must provide an explicit timestamp_utc."
+        )
+
+    clean_ts = validate_timestamp_utc(resolved_ts)
+
+    if detection_result.get("detected") is False:
+        raise ValueError(
+            "Cannot produce Contract A: detection_result indicates no oil spill was detected."
+        )
+
+    raw_geometry = detection_result.get("geometry")
+    if not raw_geometry or not isinstance(raw_geometry, dict):
+        raise ValueError(
+            "detection_result must contain a valid GeoJSON 'geometry' dictionary."
+        )
+
+    geom_type = raw_geometry.get("type")
+    if geom_type != "Polygon":
+        raise ValueError(
+            f"Contract A requires a GeoJSON Polygon geometry; got '{geom_type}'."
+        )
+
+    coords = raw_geometry.get("coordinates")
+    if not coords or not isinstance(coords, list) or len(coords) < 1:
+        raise ValueError("Polygon geometry must contain at least one linear ring.")
+
+    outer_ring = coords[0]
+    if not isinstance(outer_ring, list) or len(outer_ring) < 4:
+        raise ValueError(
+            f"Polygon outer ring must contain at least 4 coordinate pairs; got {len(outer_ring) if isinstance(outer_ring, list) else 0}."
+        )
+    if outer_ring[0] != outer_ring[-1]:
+        raise ValueError("Polygon outer ring must be closed (first coordinate equals last coordinate).")
+
+    contract_a: Dict[str, Any] = {
+        "slick_id": clean_slick_id,
+        "timestamp_utc": clean_ts,
+        "geometry": copy.deepcopy(raw_geometry),
+    }
+
+    if "area_km2" in detection_result and detection_result["area_km2"] is not None:
+        area_val = float(detection_result["area_km2"])
+        if area_val < 0.0:
+            raise ValueError(f"area_km2 cannot be negative; got {area_val}.")
+        contract_a["area_km2"] = area_val
+
+    if "confidence" in detection_result and detection_result["confidence"] is not None:
+        conf_val = float(detection_result["confidence"])
+        if not (0.0 <= conf_val <= 1.0):
+            raise ValueError(f"confidence must be between 0.0 and 1.0; got {conf_val}.")
+        contract_a["confidence"] = conf_val
+
+    return contract_a
+
