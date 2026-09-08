@@ -118,9 +118,9 @@ function Investigation() {
 
         const [detectResponse, driftResponse, attributeResponse] =
           await Promise.all([
-            fetch("http://127.0.0.1:8001/api/detect"),
-            fetch("http://127.0.0.1:8001/api/drift"),
-            fetch("http://127.0.0.1:8001/api/attribute"),
+            fetch("http://127.0.0.1:8000/api/detect"),
+            fetch("http://127.0.0.1:8000/api/drift"),
+            fetch("http://127.0.0.1:8000/api/attribute"),
           ]);
 
         if (

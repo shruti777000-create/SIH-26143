@@ -14,70 +14,29 @@ function SidebarItem({ icon, label, active, onClick }) {
   );
 }
 
-function DetectionImage({ segmented = false }) {
+function DetectionImage({ segmented = false, scenario = "oil" }) {
+  const imageSrc =
+    scenario === "oil"
+      ? "/sentinel1-00204.jpg"
+      : scenario === "no_oil"
+      ? "/sentinel1-no-oil.jpg"
+      : "/sentinel1-lookalike.jpg";
+
   return (
     <div className="detection-image-wrap">
       <img
-        src="/sentinel1-raw.jpg"
-        alt="Sentinel-1 SAR oil spill"
+        src={imageSrc}
+        alt={`Sentinel-1 SAR ${scenario}`}
         className="detection-sar-image"
       />
 
-      {segmented && (
-        <svg
-          className="segmentation-overlay"
-          viewBox="0 0 3840 2943"
-          preserveAspectRatio="none"
-        >
-          {/* Main detected slick */}
-          <path
-            className="spill-fill"
-            d="
-              M 1900 560
-              C 1780 690, 1710 850, 1660 1010
-              C 1610 1160, 1510 1280, 1430 1400
-              C 1340 1530, 1320 1670, 1250 1810
-              C 1170 1970, 1050 2080, 1010 2200
-              C 990 2290, 1070 2380, 1190 2400
-              C 1340 2420, 1440 2330, 1510 2220
-              C 1600 2080, 1640 1910, 1740 1780
-              C 1850 1630, 1950 1510, 2050 1360
-              C 2150 1210, 2230 1050, 2200 910
-              C 2170 760, 2070 630, 1900 560 Z
-            "
+      {segmented && scenario === "oil" && (
+        <div className="real-mask-overlay">
+          <img
+            src="http://127.0.0.1:8000/api/detect/segmentation-overlay"
+            alt="U-Net oil spill segmentation"
           />
-
-          {/* Secondary slick section */}
-          <path
-            className="spill-fill secondary"
-            d="
-              M 2230 690
-              C 2360 730, 2490 800, 2580 900
-              C 2660 990, 2690 1090, 2630 1170
-              C 2560 1260, 2430 1260, 2320 1190
-              C 2210 1120, 2160 1000, 2170 890
-              C 2180 800, 2190 740, 2230 690 Z
-            "
-          />
-
-          {/* Boundary */}
-          <path
-            className="spill-outline"
-            d="
-              M 1900 560
-              C 1780 690, 1710 850, 1660 1010
-              C 1610 1160, 1510 1280, 1430 1400
-              C 1340 1530, 1320 1670, 1250 1810
-              C 1170 1970, 1050 2080, 1010 2200
-              C 990 2290, 1070 2380, 1190 2400
-              C 1340 2420, 1440 2330, 1510 2220
-              C 1600 2080, 1640 1910, 1740 1780
-              C 1850 1630, 1950 1510, 2050 1360
-              C 2150 1210, 2230 1050, 2200 910
-              C 2170 760, 2070 630, 1900 560 Z
-            "
-          />
-        </svg>
+        </div>
       )}
 
       <div className="image-corner-tag">
@@ -95,6 +54,7 @@ export default function Detection() {
   // --------------------------------------------------
 
   const [detectData, setDetectData] = useState(null);
+  const [scenario, setScenario] = useState("oil");
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState("");
 
@@ -108,9 +68,7 @@ export default function Detection() {
         setLoading(true);
         setApiError("");
 
-        const response = await fetch(
-          "http://127.0.0.1:8001/api/detect"
-        );
+        const response = await fetch(`http://127.0.0.1:8000/api/detect?scenario=${scenario}`)
 
         if (!response.ok) {
           throw new Error("Detection API request failed");
@@ -131,7 +89,7 @@ export default function Detection() {
     }
 
     loadDetection();
-  }, []);
+  }, [scenario]);
 
   // --------------------------------------------------
   // API VALUES
@@ -309,6 +267,27 @@ export default function Detection() {
       -------------------------------------------------- */}
 
       <main className="detection-main">
+       <div
+  style={{
+    display: "flex",
+    gap: "10px",
+    marginBottom: "18px",
+  }}
+>
+    <button onClick={() => setScenario("oil")}>
+      Oil Spill
+    </button>
+
+    <button onClick={() => setScenario("no_oil")}>
+      No Oil
+    </button>
+
+    <button onClick={() => setScenario("lookalike")}>
+      Lookalike
+    </button>
+  </div>
+
+  
 
         <header className="detection-header">
 
@@ -403,7 +382,7 @@ export default function Detection() {
 
             </div>
 
-            <DetectionImage />
+            <DetectionImage scenario={scenario} />
 
           </div>
 
@@ -426,20 +405,27 @@ export default function Detection() {
                   </h2>
 
                   <p>
-                    U-Net predicted oil slick
-                  </p>
+  {detectData?.detected
+    ? "U-Net predicted oil slick"
+    : scenario === "lookalike"
+      ? "SAR pattern classified as lookalike"
+      : "No oil slick detected"}
+</p>
 
                 </div>
 
               </div>
 
-              <span className="panel-label detected">
-                DETECTED
-              </span>
+              <span className={`panel-label ${detectData?.detected ? "detected" : ""}`}>
+  {detectData?.detected ? "DETECTED" : "NOT DETECTED"}
+</span>
 
             </div>
 
-            <DetectionImage segmented />
+           <DetectionImage
+  segmented={detectData?.detected === true}
+  scenario={scenario}
+/>
 
           </div>
 
@@ -507,18 +493,18 @@ export default function Detection() {
                 <span>Width (Max)</span>
 
                 <strong>
-                  2.1
-                  <small> km</small>
-                </strong>
+  {detectData?.detected ? "2.1" : "0"}
+  <small> km</small>
+</strong>
               </div>
 
               <div className="geometry-row">
                 <span>Estimated Age</span>
 
                 <strong>
-                  5.2
-                  <small> hrs</small>
-                </strong>
+  {detectData?.detected ? "5.2" : "—"}
+  {detectData?.detected && <small> hrs</small>}
+</strong>
               </div>
 
             </div>
@@ -572,11 +558,12 @@ export default function Detection() {
               </span>
 
               <strong>
-                {confidence !== "--" &&
-                confidence >= 80
-                  ? "HIGH CONFIDENCE OIL SLICK"
-                  : "OIL SLICK DETECTED"}
-              </strong>
+  {detectData?.detected
+    ? confidence >= 80
+      ? "HIGH CONFIDENCE OIL SLICK"
+      : "OIL SLICK DETECTED"
+    : "NO OIL SPILL DETECTED"}
+</strong>
 
             </div>
 

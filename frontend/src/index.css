@@ -387,3 +387,39 @@ a {
     grid-template-columns: 1fr;
   }
 }
+/* --------------------------------------------------
+   DETECTION IMAGE + AI SEGMENTATION OVERLAY
+-------------------------------------------------- */
+
+.detection-image-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.detection-sar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.real-mask-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.real-mask-overlay img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: 0.85;
+  mix-blend-mode: multiply;
+}
