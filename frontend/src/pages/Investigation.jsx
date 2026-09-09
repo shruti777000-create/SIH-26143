@@ -8,6 +8,7 @@ import {
   CircleMarker,
   Popup,
   ZoomControl,
+  useMap,
 } from "react-leaflet";
 
 import "leaflet/dist/leaflet.css";
@@ -27,6 +28,20 @@ function polygonFromGeoJSON(geometry) {
   return geometry.coordinates.map((ring) =>
     geoJsonToLeaflet(ring)
   );
+}
+function SpillMapController({ polygon }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (polygon && polygon.length > 0) {
+      map.fitBounds(polygon, {
+        padding: [40, 40],
+        maxZoom: 12,
+      });
+    }
+  }, [map, polygon]);
+
+  return null;
 }
 
 function SidebarItem({ icon, label, active, onClick }) {
@@ -352,11 +367,12 @@ function Investigation() {
         <section className="map-wrapper">
 
           <MapContainer
-           center={[33.17, 30.30]}
+           center={[19.27675, 71.85875]}
             zoom={9}
             zoomControl={false}
             className="maris-map"
           >
+            <SpillMapController polygon={spillPolygon} />
 
             <TileLayer
               attribution="Tiles &copy; Esri"
@@ -369,45 +385,44 @@ function Investigation() {
                 OIL SPILL FROM /api/detect
             ----------------------------------------- */}
 
-            {layers.spill && spillPolygon.length > 0 && (
-              <Polygon
-                positions={spillPolygon}
-                pathOptions={{
-                  color: "#19b9df",
-                  weight: 2,
-                  fillColor: "#087ca0",
-                  fillOpacity: 0.42,
-                }}
-              >
-                <Popup>
-                  <strong>Oil Spill Detected</strong>
-                  <br />
+          {layers.spill && spillPolygon.length > 0 && (
+  <Polygon
+    positions={spillPolygon}
+    pathOptions={{
+      color: "#19b9df",
+      weight: 3,
+      fillColor: "#087ca0",
+      fillOpacity: 0.55,
+    }}
+  >
+    <Popup>
+      <strong>Oil Spill Detected</strong>
+      <br />
 
-                  Area:{" "}
-                  {detectData?.area_km2 ?? "--"} km²
+      Area:{" "}
+      {detectData?.area_km2 ?? "--"} km²
 
-                  <br />
+      <br />
 
-                  Length:{" "}
-                  {detectData?.length_km ?? "--"} km
+      Length:{" "}
+      {detectData?.length_km ?? "--"} km
 
-                  <br />
+      <br />
 
-                  Confidence:{" "}
-                  {detectData?.confidence != null
-                    ? `${Math.round(
-                        detectData.confidence * 100
-                      )}%`
-                    : "--"}
+      Confidence:{" "}
+      {detectData?.confidence != null
+        ? `${Math.round(
+            detectData.confidence * 100
+          )}%`
+        : "--"}
 
-                  <br />
+      <br />
 
-                  Source:{" "}
-                  {detectData?.source_image ?? "--"}
-                </Popup>
-              </Polygon>
-            )}
-
+      Source:{" "}
+      {detectData?.source_image ?? "--"}
+    </Popup>
+  </Polygon>
+)}
             {/* ----------------------------------------
                 BACKTRACK FROM /api/drift
             ----------------------------------------- */}

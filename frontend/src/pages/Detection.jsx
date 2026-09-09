@@ -63,33 +63,55 @@ export default function Detection() {
   // --------------------------------------------------
 
   useEffect(() => {
-    async function loadDetection() {
-      try {
-        setLoading(true);
-        setApiError("");
+  async function loadDetection() {
 
-        const response = await fetch(`http://127.0.0.1:8000/api/detect?scenario=${scenario}`)
-
-        if (!response.ok) {
-          throw new Error("Detection API request failed");
-        }
-
-        const data = await response.json();
-
-        setDetectData(data);
-      } catch (error) {
-        console.error("MARIS Detection API Error:", error);
-
-        setApiError(
-          "Unable to connect to MARIS FastAPI backend."
-        );
-      } finally {
-        setLoading(false);
-      }
+    // ---------------------------------------------
+    // NO OIL / LOOKALIKE
+    // These are demonstration/reference images.
+    // Do NOT run the expensive U-Net inference.
+    // ---------------------------------------------
+    if (scenario !== "oil") {
+      setDetectData(null);
+      setApiError("");
+      setLoading(false);
+      return;
     }
 
-    loadDetection();
-  }, [scenario]);
+    // ---------------------------------------------
+    // OIL SPILL
+    // Run the real Sentinel-1 U-Net detection.
+    // ---------------------------------------------
+    try {
+      setLoading(true);
+      setApiError("");
+      setDetectData(null);
+
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/detect"
+      );
+
+      if (!response.ok) {
+        throw new Error("Detection API request failed");
+      }
+
+      const data = await response.json();
+
+      setDetectData(data);
+
+    } catch (error) {
+      console.error("MARIS Detection API Error:", error);
+
+      setApiError(
+        "Unable to connect to MARIS FastAPI backend."
+      );
+
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  loadDetection();
+}, [scenario]);
 
   // --------------------------------------------------
   // API VALUES
@@ -103,7 +125,10 @@ export default function Detection() {
     detectData?.confidence != null
       ? Math.round(detectData.confidence * 100)
       : "--";
-
+  const oilDetected =
+      scenario === "oil" &&
+      detectData?.geometry?.type === "Polygon" &&
+      Number(detectData?.area_km2 ?? 0) > 0;
   const sourceImage =
     detectData?.source_image ?? "Sentinel-1 GRD";
 
@@ -404,26 +429,27 @@ export default function Detection() {
                     AI Detection (Segmentation)
                   </h2>
 
-                  <p>
-  {detectData?.detected
+                 <p>
+  {oilDetected
     ? "U-Net predicted oil slick"
     : scenario === "lookalike"
       ? "SAR pattern classified as lookalike"
-      : "No oil slick detected"}
+      : scenario === "no_oil"
+        ? "No oil slick detected"
+        : "No oil slick detected"}
 </p>
-
                 </div>
 
               </div>
 
-              <span className={`panel-label ${detectData?.detected ? "detected" : ""}`}>
-  {detectData?.detected ? "DETECTED" : "NOT DETECTED"}
+             <span className={`panel-label ${oilDetected ? "detected" : ""}`}>
+  {oilDetected ? "DETECTED" : "NOT DETECTED"}
 </span>
 
             </div>
 
            <DetectionImage
-  segmented={detectData?.detected === true}
+  segmented={oilDetected}
   scenario={scenario}
 />
 
@@ -558,10 +584,12 @@ export default function Detection() {
               </span>
 
               <strong>
-  {detectData?.detected
-    ? confidence >= 80
-      ? "HIGH CONFIDENCE OIL SLICK"
-      : "OIL SLICK DETECTED"
+  {oilDetected
+  ? confidence >= 80
+    ? "HIGH CONFIDENCE OIL SLICK"
+    : "OIL SLICK DETECTED"
+  : scenario === "lookalike"
+    ? "LOOKALIKE SAR PATTERN"
     : "NO OIL SPILL DETECTED"}
 </strong>
 

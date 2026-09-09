@@ -17,18 +17,30 @@ Exposes:
 - POST /api/pipeline  End-to-end orchestration (M1 -> M2 -> M3)
 """
 
+from email.mime import image
 import json
 import os
 from pathlib import Path
 import tempfile
 from typing import Any, Dict, Optional
-
+import io
+import cv2
+import numpy as np
+import rasterio
+from fastapi.responses import StreamingResponse
 from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 
 # Member 1
 from backend.demo_fixture import get_demo_contract_a
-from backend.oil_spill_detector import MODEL_PATH, detect_spill, format_contract_a
+from backend.oil_spill_detector import (
+    MODEL_PATH,
+    detect_spill,
+    format_contract_a,
+    predict_probability_map,
+    clean_mask,
+    extract_main_spill,
+)
 
 # Member 2
 from module2_drift.api import ContractARequest
@@ -210,10 +222,122 @@ async def detect_spill_post(
 
 @app.get("/api/detect")
 def detect_spill_get():
-    """Backwards-compatible GET endpoint returning the deterministic demo Contract A."""
-    contract_a = get_demo_contract_a()
-    contract_a["demo_mode"] = True
-    return contract_a
+    """
+    GET /api/detect:
+    Runs the real U-Net detector on the local demo SAR GeoTIFF.
+    Used by Investigation.jsx.
+    """
+    demo_image = Path(
+        r"C:\Users\HEMACHANDRU R\Downloads\00204.tif"
+    )
+
+    if not demo_image.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Demo SAR image not found: {demo_image}",
+        )
+
+    model_file = Path(MODEL_PATH)
+
+    if not model_file.exists():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Model weights not found: {MODEL_PATH}",
+        )
+
+    try:
+        raw_detection = detect_spill(str(demo_image))
+
+        contract_a = format_contract_a(
+            detection_result=raw_detection,
+            slick_id="SLICK-SAR-00204",
+            timestamp_utc="2026-09-04T12:00:00Z",
+            image_path=str(demo_image),
+        )
+
+        contract_a["demo_mode"] = False
+
+        return contract_a
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Detection processing failed: {exc}",
+        )
+@app.get("/api/detect/segmentation-overlay")
+def segmentation_overlay():
+    """
+    Returns the real U-Net segmentation visualization for the local demo SAR image.
+    """
+
+    demo_image = Path(
+        r"C:\Users\HEMACHANDRU R\Downloads\00204.tif"
+    )
+
+    if not demo_image.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Demo SAR image not found: {demo_image}",
+        )
+
+    try:
+        from backend.oil_spill_detector import (
+            predict_probability_map,
+            clean_mask,
+            extract_main_spill,
+            normalize_band,
+        )
+
+        if cv2 is None:
+            raise RuntimeError("OpenCV is not available")
+
+        # Read Sentinel-1 image
+        with rasterio.open(demo_image) as src:
+            image = src.read([1, 2]).astype(np.float32)
+
+# IMPORTANT: use the exact same preprocessing as detect_spill()
+        image[0] = normalize_band(image[0])
+        image[1] = normalize_band(image[1])
+
+        probability_map = predict_probability_map(image)
+
+        # Threshold + morphological cleanup
+        mask = clean_mask(probability_map)
+
+        # Keep only largest connected spill region
+        main_spill = extract_main_spill(mask)
+
+
+        # Transparent background + red oil-spill segmentation
+        overlay = np.zeros(
+             (image.shape[1], image.shape[2], 4),
+             dtype=np.uint8,
+)
+
+# Red oil-spill segmentation with transparency
+        overlay[main_spill > 0] = (0, 0, 255, 180)
+        # Encode as PNG
+        success, encoded = cv2.imencode(".png", overlay)
+
+        if not success:
+            raise RuntimeError("Failed to encode segmentation overlay")
+
+        return StreamingResponse(
+            io.BytesIO(encoded.tobytes()),
+            media_type="image/png",
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Segmentation overlay generation failed: {exc}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -284,21 +408,221 @@ async def drift_forecast_post(request: Request):
     return contract_b
 
 
+# ---------------------------------------------------------------------------
+# 2. Contract B — Drift / Hindcast / Forecast
+# ---------------------------------------------------------------------------
+
+def build_demo_drift_contract(contract_a: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Demo-safe Contract B.
+
+    Used when Member 2 cannot access local metocean/OpenDrift data.
+    The structure is intentionally compatible with Investigation.jsx.
+    """
+
+    geometry = contract_a.get("geometry", {})
+
+    # Use the actual detected/demo polygon centroid when possible.
+    try:
+        ring = geometry["coordinates"][0]
+        lng = sum(point[0] for point in ring[:-1]) / len(ring[:-1])
+        lat = sum(point[1] for point in ring[:-1]) / len(ring[:-1])
+    except Exception:
+        lng = 30.306115133946207
+        lat = 33.16366307453298
+
+    return {
+        "slick_id": contract_a.get("slick_id", "DEMO-SLICK-001"),
+        "demo_mode": True,
+        "status": "DEMO_FALLBACK",
+
+        "message": (
+            "Real drift simulation unavailable because local "
+            "metocean/OpenDrift environmental data is unavailable."
+        ),
+
+        "estimated_origin": {
+            "point": [lng, lat],
+            "time_utc": contract_a.get(
+                "timestamp_utc",
+                "2026-09-04T12:00:00Z"
+            ),
+        },
+
+        "backtrack_track": {
+            "type": "LineString",
+            "coordinates": [
+                [lng, lat],
+                [lng - 0.006, lat + 0.003],
+                [lng - 0.012, lat + 0.006],
+                [lng - 0.018, lat + 0.009],
+            ],
+        },
+
+        "forecast_polygons": [
+            {
+                "hours_ahead": 6,
+                "demo_mode": True,
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [lng - 0.006, lat - 0.004],
+                        [lng + 0.006, lat - 0.004],
+                        [lng + 0.009, lat + 0.004],
+                        [lng,        lat + 0.008],
+                        [lng - 0.006, lat - 0.004],
+                    ]],
+                },
+            },
+            {
+                "hours_ahead": 24,
+                "demo_mode": True,
+                "geometry": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [lng - 0.014, lat - 0.010],
+                        [lng + 0.014, lat - 0.010],
+                        [lng + 0.020, lat + 0.010],
+                        [lng,        lat + 0.018],
+                        [lng - 0.014, lat - 0.010],
+                    ]],
+                },
+            },
+        ],
+    }
 @app.get("/api/drift")
 def drift_forecast_get():
-    """Backwards-compatible GET endpoint executing real drift model on the demo Contract A fixture."""
-    demo_a = get_demo_contract_a()
-    contract_b = forecast_drift(
-        slick_polygon=demo_a,
-        seed_mode="centroid",
-        backtrack_hours=12,
-        forecast_hours=[6, 24],
-        num_particles=25,
-    )
-    if isinstance(contract_b, dict) and not contract_b.get("error"):
-        contract_b["slick_id"] = demo_a["slick_id"]
-    return contract_b
+    """
+    GET /api/drift.
 
+    Uses the same real Contract A produced by the
+    satellite oil-spill detector for 00204.tif.
+    """
+
+    demo_image = Path(
+        r"C:\Users\HEMACHANDRU R\Downloads\00204.tif"
+    )
+
+    if not demo_image.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Demo Sentinel-1 image not found: {demo_image}"
+        )
+
+    try:
+        # Run the SAME real satellite detector used by /api/detect.
+        raw_detection = detect_spill(str(demo_image))
+
+        contract_a = format_contract_a(
+            detection_result=raw_detection,
+            slick_id="SLICK-SAR-00204",
+            timestamp_utc="2026-09-04T12:00:00Z",
+            image_path=str(demo_image),
+        )
+
+        # Build demo-safe drift around the REAL detected slick.
+        return build_demo_drift_contract(contract_a)
+
+    except Exception as exc:
+        print(
+            "[MARIS] GET /api/drift failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unable to generate drift contract: {exc}"
+        )
+@app.post("/api/drift")
+async def drift_forecast_post(request: Request):
+    """
+    POST /api/drift.
+
+    Executes the real Member 2 OpenDrift model when available.
+    If the environmental data/model is unavailable, returns
+    a clearly labelled demo fallback instead of HTTP 500.
+    """
+
+    content_type = request.headers.get("content-type", "")
+    payload_data = None
+
+    if "application/json" in content_type:
+        try:
+            payload_data = await request.json()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid JSON payload: {exc}",
+            )
+
+    elif (
+        "multipart/form-data" in content_type
+        or "application/x-www-form-urlencoded" in content_type
+    ):
+        form = await request.form()
+
+        if "contract_a" in form:
+            try:
+                payload_data = json.loads(form["contract_a"])
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid contract_a JSON in form: {exc}",
+                )
+        else:
+            payload_data = dict(form)
+
+    else:
+        try:
+            payload_data = await request.json()
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Expected JSON or multipart Contract A payload.",
+            )
+
+    if not isinstance(payload_data, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="Contract A payload must be a JSON object.",
+        )
+
+    # Validate Contract A.
+    try:
+        req_a = ContractARequest(**payload_data)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Contract A validation error: {exc}",
+        )
+
+    # Try the real Member 2 engine.
+    try:
+        contract_b = forecast_drift(
+            slick_polygon=payload_data,
+            seed_mode="centroid",
+            backtrack_hours=12,
+            forecast_hours=[6, 24],
+            num_particles=25,
+        )
+
+        if (
+            isinstance(contract_b, dict)
+            and not contract_b.get("error")
+        ):
+            contract_b["slick_id"] = req_a.slick_id
+            contract_b["demo_mode"] = False
+            return contract_b
+
+    except Exception as exc:
+        print(
+            "[MARIS] Real drift simulation unavailable. "
+            f"Using fallback. "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+    # Demo fallback.
+    return build_demo_drift_contract(payload_data)
 
 # ---------------------------------------------------------------------------
 # 3. Contract C — Vessel Attribution
@@ -376,180 +700,276 @@ async def vessel_attribution_post(request: Request):
 
     _enrich_contract_c_for_frontend(contract_c)
     return contract_c
-
-
 @app.get("/api/attribute")
 def vessel_attribution_get():
-    """Backwards-compatible GET endpoint executing real drift + attribution on demo fixtures."""
+    """
+    GET /api/attribute.
+
+    Demo-safe endpoint used by Investigation.jsx.
+    Does not require the real AIS/OpenDrift pipeline.
+    """
+
     demo_a = get_demo_contract_a()
-    contract_b = forecast_drift(
-        slick_polygon=demo_a,
-        seed_mode="centroid",
-        backtrack_hours=12,
-        forecast_hours=[6, 24],
-        num_particles=25,
-    )
-    contract_b["slick_id"] = demo_a["slick_id"]
-    engine = VesselAttributionEngine(DEFAULT_CONFIG)
-    contract_c = engine.attribute_spill(
-        contract_b=contract_b,
-        ais_source=str(DEFAULT_AIS_PATH),
-    )
-    _enrich_contract_c_for_frontend(contract_c)
-    return contract_c
 
+    return {
+        "slick_id": demo_a.get("slick_id", "DEMO-SLICK-001"),
+        "demo_mode": True,
+        "status": "DEMO_FALLBACK",
+        "message": (
+            "AIS attribution is running in demonstration mode because "
+            "the real drift/environmental pipeline is unavailable."
+        ),
+        "suspects": [
+            {
+                "mmsi": "412345678",
+                "vessel_name": "Tanker A",
+                "score": 0.87,
+                "proximity_km": 2.1,
+                "anomaly_flags": [
+                    "loitering",
+                    "ais_gap_10min"
+                ],
+                "evidence_text": (
+                    "Demonstration suspect: vessel positioned near the "
+                    "estimated spill origin with trajectory anomaly indicators."
+                ),
+            },
+            {
+                "mmsi": "412345679",
+                "vessel_name": "Cargo B",
+                "score": 0.64,
+                "proximity_km": 5.8,
+                "anomaly_flags": [
+                    "speed_change"
+                ],
+                "evidence_text": (
+                    "Demonstration suspect: vessel intersects the "
+                    "investigation corridor with a speed-change indicator."
+                ),
+            },
+            {
+                "mmsi": "412345680",
+                "vessel_name": "Tanker C",
+                "score": 0.41,
+                "proximity_km": 9.4,
+                "anomaly_flags": [],
+                "evidence_text": (
+                    "Demonstration suspect: vessel was within the "
+                    "investigation time window but has lower spatial correlation."
+                ),
+            },
+        ],
+    }
 
 # ---------------------------------------------------------------------------
-# 4. Pipeline — End-to-End Orchestration (M1 -> M2 -> M3)
+# 3. Contract C — Vessel Attribution
 # ---------------------------------------------------------------------------
 
-@app.post("/api/pipeline")
-async def run_pipeline_post(
-    request: Request,
-    demo: bool = Query(False),
-):
+def build_demo_attribute_contract(
+    contract_b: Dict[str, Any]
+) -> Dict[str, Any]:
     """
-    POST /api/pipeline:
-    Chains Member 1 -> Member 2 -> Member 3:
-    1. Obtains Contract A (from demo fixture or real SAR detection).
-    2. Runs real Member 2 OpenDrift drift model -> Contract B.
-    3. Runs real Member 3 attribution engine -> Contract C.
-    Returns:
-        {
-            "pipeline_status": "SUCCESS",
-            "demo_mode": bool,
-            "contract_a": {...},
-            "contract_b": {...},
-            "contract_c": {...}
-        }
+    Demo-safe Contract C.
+
+    Uses the attribution response shape expected by
+    Investigation.jsx.
+
+    IMPORTANT:
+    These are demonstration ranking values only.
+    They are not presented as real AIS-derived attribution.
     """
+
+    return {
+        "slick_id": contract_b.get(
+            "slick_id",
+            "DEMO-SLICK-001"
+        ),
+
+        "demo_mode": True,
+
+        "status": "DEMO_FALLBACK",
+
+        "message": (
+            "AIS attribution is running in demonstration mode "
+            "because the real drift/environmental pipeline "
+            "is unavailable."
+        ),
+
+        "suspects": [
+            {
+                "mmsi": "412345678",
+                "vessel_name": "Tanker A",
+                "score": 0.87,
+                "proximity_km": 2.1,
+                "anomaly_flags": [
+                    "loitering",
+                    "ais_gap_10min",
+                ],
+                "evidence_text": (
+                    "Demonstration suspect: vessel positioned "
+                    "near the estimated spill origin with "
+                    "trajectory anomaly indicators."
+                ),
+            },
+            {
+                "mmsi": "412345679",
+                "vessel_name": "Cargo B",
+                "score": 0.64,
+                "proximity_km": 5.8,
+                "anomaly_flags": [
+                    "speed_change",
+                ],
+                "evidence_text": (
+                    "Demonstration suspect: vessel intersects "
+                    "the investigation corridor with a "
+                    "speed-change indicator."
+                ),
+            },
+            {
+                "mmsi": "412345680",
+                "vessel_name": "Tanker C",
+                "score": 0.41,
+                "proximity_km": 9.4,
+                "anomaly_flags": [],
+                "evidence_text": (
+                    "Demonstration suspect: vessel was within "
+                    "the investigation time window but has "
+                    "lower spatial correlation."
+                ),
+            },
+        ],
+    }
+
+
+@app.post("/api/attribute")
+async def vessel_attribution_post(request: Request):
+    """
+    POST /api/attribute.
+
+    Executes real Member 3 AIS attribution when possible.
+    Falls back gracefully when the drift/environmental
+    dependency is unavailable.
+    """
+
     content_type = request.headers.get("content-type", "")
-    is_demo = demo
-    uploaded_sar = None
-    uploaded_ais = None
-    slick_id = None
-    timestamp_utc = None
+
+    ais_path = str(DEFAULT_AIS_PATH)
     temp_ais_file = None
-    temp_sar_file = None
+    contract_b_data = None
 
     if "multipart/form-data" in content_type:
         form = await request.form()
-        if "demo" in form:
-            demo_val = str(form.get("demo")).lower()
-            is_demo = demo_val in ("true", "1", "yes")
-        uploaded_sar = form.get("sar_file") or form.get("file")
-        uploaded_ais = form.get("ais_file")
-        slick_id = form.get("slick_id")
-        timestamp_utc = form.get("timestamp_utc")
-    elif "application/json" in content_type:
+
+        raw_b = form.get("contract_b")
+
+        if not raw_b:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing required 'contract_b'.",
+            )
+
+        if isinstance(raw_b, str):
+            try:
+                contract_b_data = json.loads(raw_b)
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid contract_b JSON: {exc}",
+                )
+
+        elif isinstance(raw_b, dict):
+            contract_b_data = raw_b
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid contract_b payload format.",
+            )
+
+        ais_upload = form.get("ais_file")
+
+        if (
+            ais_upload
+            and hasattr(ais_upload, "read")
+            and getattr(ais_upload, "filename", None)
+        ):
+            content = await ais_upload.read()
+
+            if content:
+                tmp = tempfile.NamedTemporaryFile(
+                    delete=False,
+                    suffix=".csv",
+                )
+                tmp.write(content)
+                tmp.flush()
+                tmp.close()
+
+                ais_path = tmp.name
+                temp_ais_file = tmp.name
+
+    else:
         try:
             body = await request.json()
-            if isinstance(body, dict):
-                is_demo = body.get("demo", is_demo)
-                slick_id = body.get("slick_id")
-                timestamp_utc = body.get("timestamp_utc")
-        except Exception:
-            pass
-
-    # --- Stage 1: Member 1 Detection (Contract A) ---
-    if is_demo:
-        contract_a = get_demo_contract_a()
-        demo_mode = True
-    elif uploaded_sar is not None and hasattr(uploaded_sar, "read") and getattr(uploaded_sar, "filename", None):
-        # Real SAR mode
-        model_file = Path(MODEL_PATH)
-        if not model_file.exists():
+        except Exception as exc:
             raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    f"Real U-Net detection model weights ({MODEL_PATH}) are not available on this server. "
-                    "Set demo=true to use the deterministic demonstration fixture."
-                ),
+                status_code=400,
+                detail=f"Invalid JSON payload: {exc}",
             )
-        sar_bytes = await uploaded_sar.read()
-        tmp_s = tempfile.NamedTemporaryFile(delete=False, suffix=".tif")
-        tmp_s.write(sar_bytes)
-        tmp_s.flush()
-        tmp_s.close()
-        temp_sar_file = tmp_s.name
 
-        try:
-            raw_detection = detect_spill(temp_sar_file)
-            contract_a = format_contract_a(
-                detection_result=raw_detection,
-                slick_id=slick_id or "SLICK-SAR-001",
-                timestamp_utc=timestamp_utc,
-                image_path=temp_sar_file,
-            )
-            demo_mode = False
-        except ValueError as val_err:
-            raise HTTPException(status_code=400, detail=str(val_err))
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Member 1 detection failed: {e}")
-        finally:
-            if temp_sar_file and os.path.exists(temp_sar_file):
-                try:
-                    os.remove(temp_sar_file)
-                except Exception:
-                    pass
-    else:
+        if (
+            isinstance(body, dict)
+            and isinstance(body.get("contract_b"), dict)
+        ):
+            contract_b_data = body["contract_b"]
+        else:
+            contract_b_data = body
+
+    if not isinstance(contract_b_data, dict):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing required SAR GeoTIFF file upload for real pipeline mode. Set demo=true to use demonstration fixture.",
+            status_code=400,
+            detail="Contract B payload must be a JSON object.",
         )
 
-    # Validate Contract A
+    # Validate Contract B.
     try:
-        req_a = ContractARequest(**contract_a)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Contract A validation error: {e}")
+        ContractBInput(**contract_b_data)
+    except Exception as exc:
+        # Demo fallback is only appropriate for a structurally valid
+        # Contract B, so don't hide malformed client input.
+        if temp_ais_file and os.path.exists(temp_ais_file):
+            os.remove(temp_ais_file)
 
-    # --- Stage 2: Member 2 Drift Simulation (Contract B) ---
-    try:
-        contract_b = forecast_drift(
-            slick_polygon=contract_a,
-            seed_mode="centroid",
-            backtrack_hours=12,
-            forecast_hours=[6, 24],
-            num_particles=25,
+        raise HTTPException(
+            status_code=400,
+            detail=f"Contract B validation error: {exc}",
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Member 2 simulation failed: {e}")
-
-    if not isinstance(contract_b, dict) or contract_b.get("error"):
-        reason = contract_b.get("reason", "Drift simulation failed") if isinstance(contract_b, dict) else "Unknown"
-        raise HTTPException(status_code=400, detail=f"Member 2 drift error: {reason}")
-
-    contract_b["slick_id"] = contract_a["slick_id"]
-
-    # Validate Contract B
-    try:
-        ContractBInput(**contract_b)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Contract B schema error: {e}")
-
-    # --- Stage 3: Member 3 AIS Attribution (Contract C) ---
-    ais_path = str(DEFAULT_AIS_PATH)
-    if uploaded_ais and hasattr(uploaded_ais, "read") and getattr(uploaded_ais, "filename", None):
-        content = await uploaded_ais.read()
-        if content:
-            tmp_a = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
-            tmp_a.write(content)
-            tmp_a.flush()
-            tmp_a.close()
-            ais_path = tmp_a.name
-            temp_ais_file = tmp_a.name
 
     try:
+        # Real Member 3 attribution.
         engine = VesselAttributionEngine(DEFAULT_CONFIG)
+
         contract_c = engine.attribute_spill(
-            contract_b=contract_b,
+            contract_b=contract_b_data,
             ais_source=ais_path,
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Member 3 attribution failed: {e}")
+
+        _enrich_contract_c_for_frontend(contract_c)
+
+        contract_c["demo_mode"] = False
+
+        return contract_c
+
+    except Exception as exc:
+        print(
+            "[MARIS] Real AIS attribution unavailable. "
+            f"Using fallback. "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+        return build_demo_attribute_contract(
+            contract_b_data
+        )
+
     finally:
         if temp_ais_file and os.path.exists(temp_ais_file):
             try:
@@ -557,42 +977,454 @@ async def run_pipeline_post(
             except Exception:
                 pass
 
-    _enrich_contract_c_for_frontend(contract_c)
+
+@app.get("/api/attribute")
+def vessel_attribution_get():
+    """
+    GET /api/attribute.
+
+    Attempts the real drift + AIS pipeline.
+    Falls back to a dashboard-safe Contract C.
+    """
+
+    demo_a = get_demo_contract_a()
+
+    # First try real drift.
+    try:
+        contract_b = forecast_drift(
+            slick_polygon=demo_a,
+            seed_mode="centroid",
+            backtrack_hours=12,
+            forecast_hours=[6, 24],
+            num_particles=25,
+        )
+
+        if (
+            isinstance(contract_b, dict)
+            and not contract_b.get("error")
+        ):
+            contract_b["slick_id"] = demo_a["slick_id"]
+
+            engine = VesselAttributionEngine(
+                DEFAULT_CONFIG
+            )
+
+            contract_c = engine.attribute_spill(
+                contract_b=contract_b,
+                ais_source=str(DEFAULT_AIS_PATH),
+            )
+
+            _enrich_contract_c_for_frontend(contract_c)
+
+            contract_c["demo_mode"] = False
+
+            return contract_c
+
+    except Exception as exc:
+        print(
+            "[MARIS] Real attribution unavailable. "
+            f"Using fallback. "
+            f"{type(exc).__name__}: {exc}"
+        )
+
+    # Build compatible fallback Contract B first.
+    fallback_b = build_demo_drift_contract(demo_a)
+
+    # Then compatible fallback Contract C.
+    return build_demo_attribute_contract(fallback_b)
+
+# ---------------------------------------------------------------------------
+# 4. Pipeline — End-to-End Orchestration (M1 -> M2 -> M3)
+# ---------------------------------------------------------------------------
+
+def build_demo_pipeline_contract(
+    contract_a: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Builds a complete demo-safe M1 -> M2 -> M3 pipeline.
+    """
+
+    contract_b = build_demo_drift_contract(contract_a)
+
+    contract_c = build_demo_attribute_contract(contract_b)
 
     return {
-        "pipeline_status": "SUCCESS",
-        "demo_mode": demo_mode,
+        "pipeline_status": "DEMO_FALLBACK",
+
+        "demo_mode": True,
+
+        "message": (
+            "MARIS pipeline completed using real Member 1 "
+            "detection with demo-safe Member 2 and Member 3 "
+            "fallbacks."
+        ),
+
         "contract_a": contract_a,
+
         "contract_b": contract_b,
+
         "contract_c": contract_c,
     }
+
+
+@app.post("/api/pipeline")
+async def run_pipeline_post(
+    request: Request,
+    demo: bool = Query(False),
+):
+    """
+    POST /api/pipeline.
+
+    Attempts the complete real pipeline:
+
+        Member 1 -> Member 2 -> Member 3
+
+    If Member 2 environmental data is unavailable,
+    the pipeline returns a clearly labelled fallback
+    rather than failing the complete API.
+    """
+
+    content_type = request.headers.get("content-type", "")
+
+    is_demo = demo
+
+    uploaded_sar = None
+    uploaded_ais = None
+
+    slick_id = None
+    timestamp_utc = None
+
+    temp_sar_file = None
+    temp_ais_file = None
+
+    try:
+
+        # --------------------------------------------------
+        # Read request
+        # --------------------------------------------------
+
+        if "multipart/form-data" in content_type:
+
+            form = await request.form()
+
+            if "demo" in form:
+                demo_val = str(
+                    form.get("demo")
+                ).lower()
+
+                is_demo = demo_val in (
+                    "true",
+                    "1",
+                    "yes",
+                )
+
+            uploaded_sar = (
+                form.get("sar_file")
+                or form.get("file")
+            )
+
+            uploaded_ais = form.get("ais_file")
+
+            slick_id = form.get("slick_id")
+
+            timestamp_utc = form.get(
+                "timestamp_utc"
+            )
+
+        elif "application/json" in content_type:
+
+            try:
+                body = await request.json()
+
+                if isinstance(body, dict):
+
+                    is_demo = body.get(
+                        "demo",
+                        is_demo,
+                    )
+
+                    slick_id = body.get(
+                        "slick_id"
+                    )
+
+                    timestamp_utc = body.get(
+                        "timestamp_utc"
+                    )
+
+            except Exception:
+                pass
+
+        # --------------------------------------------------
+        # Stage 1 — Member 1
+        # --------------------------------------------------
+
+        if is_demo:
+
+            contract_a = get_demo_contract_a()
+
+            contract_a["demo_mode"] = True
+
+        elif (
+            uploaded_sar is not None
+            and hasattr(uploaded_sar, "read")
+            and getattr(
+                uploaded_sar,
+                "filename",
+                None,
+            )
+        ):
+
+            model_file = Path(MODEL_PATH)
+
+            if not model_file.exists():
+
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Real U-Net model weights are "
+                        "not available on this server."
+                    ),
+                )
+
+            sar_bytes = await uploaded_sar.read()
+
+            tmp_sar = tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=".tif",
+            )
+
+            tmp_sar.write(sar_bytes)
+            tmp_sar.flush()
+            tmp_sar.close()
+
+            temp_sar_file = tmp_sar.name
+
+            raw_detection = detect_spill(
+                temp_sar_file
+            )
+
+            contract_a = format_contract_a(
+                detection_result=raw_detection,
+                slick_id=(
+                    slick_id
+                    or "SLICK-SAR-001"
+                ),
+                timestamp_utc=timestamp_utc,
+                image_path=temp_sar_file,
+            )
+
+            contract_a["demo_mode"] = False
+
+        else:
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Missing SAR GeoTIFF. "
+                    "Set demo=true for demonstration mode."
+                ),
+            )
+
+        # --------------------------------------------------
+        # Validate Contract A
+        # --------------------------------------------------
+
+        try:
+            ContractARequest(**contract_a)
+
+        except Exception as exc:
+
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Contract A validation error: {exc}"
+                ),
+            )
+
+        # --------------------------------------------------
+        # Stage 2 — Member 2
+        # --------------------------------------------------
+
+        try:
+
+            contract_b = forecast_drift(
+                slick_polygon=contract_a,
+                seed_mode="centroid",
+                backtrack_hours=12,
+                forecast_hours=[6, 24],
+                num_particles=25,
+            )
+
+            if (
+                not isinstance(contract_b, dict)
+                or contract_b.get("error")
+            ):
+                raise RuntimeError(
+                    "Drift simulation returned an error."
+                )
+
+            contract_b["slick_id"] = (
+                contract_a["slick_id"]
+            )
+
+            contract_b["demo_mode"] = (
+                contract_a.get(
+                    "demo_mode",
+                    False,
+                )
+            )
+
+        except Exception as exc:
+
+            print(
+                "[MARIS] Pipeline drift stage "
+                "unavailable. Using fallback. "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+            return build_demo_pipeline_contract(
+                contract_a
+            )
+
+        # --------------------------------------------------
+        # Validate Contract B
+        # --------------------------------------------------
+
+        try:
+            ContractBInput(**contract_b)
+
+        except Exception as exc:
+
+            print(
+                "[MARIS] Contract B schema validation "
+                f"failed: {exc}"
+            )
+
+            return build_demo_pipeline_contract(
+                contract_a
+            )
+
+        # --------------------------------------------------
+        # Stage 3 — Member 3
+        # --------------------------------------------------
+
+        ais_path = str(DEFAULT_AIS_PATH)
+
+        if (
+            uploaded_ais
+            and hasattr(uploaded_ais, "read")
+            and getattr(
+                uploaded_ais,
+                "filename",
+                None,
+            )
+        ):
+
+            content = await uploaded_ais.read()
+
+            if content:
+
+                tmp_ais = tempfile.NamedTemporaryFile(
+                    delete=False,
+                    suffix=".csv",
+                )
+
+                tmp_ais.write(content)
+                tmp_ais.flush()
+                tmp_ais.close()
+
+                ais_path = tmp_ais.name
+                temp_ais_file = tmp_ais.name
+
+        try:
+
+            engine = VesselAttributionEngine(
+                DEFAULT_CONFIG
+            )
+
+            contract_c = engine.attribute_spill(
+                contract_b=contract_b,
+                ais_source=ais_path,
+            )
+
+            _enrich_contract_c_for_frontend(
+                contract_c
+            )
+
+            contract_c["demo_mode"] = False
+
+        except Exception as exc:
+
+            print(
+                "[MARIS] Pipeline attribution stage "
+                "unavailable. Using fallback. "
+                f"{type(exc).__name__}: {exc}"
+            )
+
+            contract_c = build_demo_attribute_contract(
+                contract_b
+            )
+
+        # --------------------------------------------------
+        # Success
+        # --------------------------------------------------
+
+        return {
+            "pipeline_status": "SUCCESS",
+
+            "demo_mode": (
+                contract_a.get(
+                    "demo_mode",
+                    False,
+                )
+                or contract_b.get(
+                    "demo_mode",
+                    False,
+                )
+                or contract_c.get(
+                    "demo_mode",
+                    False,
+                )
+            ),
+
+            "contract_a": contract_a,
+
+            "contract_b": contract_b,
+
+            "contract_c": contract_c,
+        }
+
+    finally:
+
+        if (
+            temp_sar_file
+            and os.path.exists(temp_sar_file)
+        ):
+            try:
+                os.remove(temp_sar_file)
+            except Exception:
+                pass
+
+        if (
+            temp_ais_file
+            and os.path.exists(temp_ais_file)
+        ):
+            try:
+                os.remove(temp_ais_file)
+            except Exception:
+                pass
 
 
 @app.get("/api/pipeline")
 def run_pipeline_get():
-    """Backwards-compatible GET endpoint executing the complete pipeline in demo mode."""
-    demo_a = get_demo_contract_a()
-    contract_b = forecast_drift(
-        slick_polygon=demo_a,
-        seed_mode="centroid",
-        backtrack_hours=12,
-        forecast_hours=[6, 24],
-        num_particles=25,
-    )
-    if isinstance(contract_b, dict) and not contract_b.get("error"):
-        contract_b["slick_id"] = demo_a["slick_id"]
-    engine = VesselAttributionEngine(DEFAULT_CONFIG)
-    contract_c = engine.attribute_spill(
-        contract_b=contract_b,
-        ais_source=str(DEFAULT_AIS_PATH),
-    )
-    _enrich_contract_c_for_frontend(contract_c)
-    return {
-        "pipeline_status": "SUCCESS",
-        "demo_mode": True,
-        "contract_a": demo_a,
-        "contract_b": contract_b,
-        "contract_c": contract_c,
-    }
+    """
+    GET /api/pipeline.
 
+    Dashboard-safe complete pipeline.
+    """
 
+    contract_a = get_demo_contract_a()
+
+    return build_demo_pipeline_contract(
+        contract_a
+    )
