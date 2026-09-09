@@ -126,23 +126,26 @@ function Pipeline() {
             <div className="stage-flow">
 
               {stages.map((stage, index) => (
-                <div className="stage-unit" key={stage.number}>
+  <div
+  className={`stage-unit ${
+    stage.number === "02" ? "clickable-stage" : ""
+  }`}
+  key={stage.number}
+  onClick={() => {
+    if (stage.number === "02") {
+      navigate("/detection");
+    }
+  }}
+>
+    <div className="stage-node">{stage.number}</div>
+    <div className="stage-text">
+      <strong>{stage.title}</strong>
+      <small>{stage.detail}</small>
+    </div>
 
-                  <div className="stage-node">
-                    {stage.number}
-                  </div>
-
-                  <div className="stage-text">
-                    <strong>{stage.title}</strong>
-                    <small>{stage.detail}</small>
-                  </div>
-
-                  {index < stages.length - 1 && (
-                    <div className="stage-line"></div>
-                  )}
-
-                </div>
-              ))}
+    {index < stages.length - 1 && <div className="stage-line"></div>}
+  </div>
+))}
 
             </div>
 
