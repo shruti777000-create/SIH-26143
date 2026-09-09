@@ -38,6 +38,7 @@ from module2_drift.drift_model import forecast_drift
 from module3_ais.attribution_engine import VesselAttributionEngine
 from module3_ais.config import DEFAULT_CONFIG
 from module3_ais.schemas import ContractBInput
+from module3_ais.validate_schema import validate_contract_c
 
 # Paths
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -374,6 +375,11 @@ async def vessel_attribution_post(request: Request):
             except Exception:
                 pass
 
+    # Validate Contract C
+    is_valid_c, errors_c = validate_contract_c(contract_c)
+    if not is_valid_c:
+        raise HTTPException(status_code=500, detail=f"Generated Contract C schema error: {errors_c}")
+
     _enrich_contract_c_for_frontend(contract_c)
     return contract_c
 
@@ -395,6 +401,9 @@ def vessel_attribution_get():
         contract_b=contract_b,
         ais_source=str(DEFAULT_AIS_PATH),
     )
+    is_valid_c, errors_c = validate_contract_c(contract_c)
+    if not is_valid_c:
+        raise HTTPException(status_code=500, detail=f"Generated Contract C schema error: {errors_c}")
     _enrich_contract_c_for_frontend(contract_c)
     return contract_c
 
@@ -557,6 +566,11 @@ async def run_pipeline_post(
             except Exception:
                 pass
 
+    # Validate Contract C
+    is_valid_c, errors_c = validate_contract_c(contract_c)
+    if not is_valid_c:
+        raise HTTPException(status_code=500, detail=f"Member 3 Contract C schema error: {errors_c}")
+
     _enrich_contract_c_for_frontend(contract_c)
 
     return {
@@ -586,6 +600,9 @@ def run_pipeline_get():
         contract_b=contract_b,
         ais_source=str(DEFAULT_AIS_PATH),
     )
+    is_valid_c, errors_c = validate_contract_c(contract_c)
+    if not is_valid_c:
+        raise HTTPException(status_code=500, detail=f"Contract C schema error: {errors_c}")
     _enrich_contract_c_for_frontend(contract_c)
     return {
         "pipeline_status": "SUCCESS",
