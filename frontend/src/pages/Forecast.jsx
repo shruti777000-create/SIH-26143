@@ -74,12 +74,13 @@ function Forecast() {
   // FASTAPI DATA
   // --------------------------------------------------
 
+  const [detectData, setDetectData] = useState(null);
   const [driftData, setDriftData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState("");
 
   // --------------------------------------------------
-  // FETCH /api/drift
+  // FETCH /api/detect then /api/drift
   // --------------------------------------------------
 
   useEffect(() => {
@@ -88,12 +89,31 @@ function Forecast() {
         setLoading(true);
         setApiError("");
 
-        const response = await fetch(
-          "http://127.0.0.1:8001/api/drift"
-        );
+        // 1. Fetch Contract A
+        const detectResponse = await fetch("/api/detect?demo=true", {
+          method: "POST",
+        });
+
+        if (!detectResponse.ok) {
+          const err = await detectResponse.json().catch(() => ({}));
+          throw new Error(err.detail || `Detection API request failed (${detectResponse.status})`);
+        }
+
+        const contractA = await detectResponse.json();
+        setDetectData(contractA);
+
+        // 2. Fetch real Contract B by sending Contract A
+        const response = await fetch("/api/drift", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(contractA),
+        });
 
         if (!response.ok) {
-          throw new Error("Drift API request failed");
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.detail || `Drift API simulation request failed (${response.status})`);
         }
 
         const data = await response.json();
@@ -103,7 +123,7 @@ function Forecast() {
         console.error("MARIS Drift API Error:", error);
 
         setApiError(
-          "Unable to connect to MARIS FastAPI backend."
+          error.message || "Unable to connect to MARIS FastAPI backend."
         );
       } finally {
         setLoading(false);
@@ -120,9 +140,9 @@ function Forecast() {
   const originPoint =
     driftData?.estimated_origin?.point;
 
-  const origin = originPoint
+  const origin = originPoint && originPoint.length >= 2
     ? [originPoint[1], originPoint[0]]
-    : [13.08, 80.27];
+    : null;
 
   const backtrack =
     driftData?.backtrack_track?.coordinates
@@ -423,7 +443,8 @@ function Forecast() {
             <div className="forecast-map">
 
               <MapContainer
-                center={origin}
+                key={origin ? `${origin[0]}-${origin[1]}` : "forecast-map"}
+                center={origin || [19.28, 71.86]}
                 zoom={11}
                 scrollWheelZoom={true}
                 zoomControl={true}
@@ -498,31 +519,33 @@ function Forecast() {
                     ORIGIN
                 ========================================== */}
 
-                <CircleMarker
-                  center={origin}
-                  radius={8}
-                  pathOptions={{
-                    color: "#ffffff",
-                    weight: 2,
-                    fillColor: "#e05252",
-                    fillOpacity: 1,
-                  }}
-                >
+                {origin && (
+                  <CircleMarker
+                    center={origin}
+                    radius={8}
+                    pathOptions={{
+                      color: "#ffffff",
+                      weight: 2,
+                      fillColor: "#e05252",
+                      fillOpacity: 1,
+                    }}
+                  >
 
-                  <Tooltip direction="top">
+                    <Tooltip direction="top">
 
-                    <strong>
-                      Estimated Spill Origin
-                    </strong>
+                      <strong>
+                        Estimated Spill Origin
+                      </strong>
 
-                    <br />
+                      <br />
 
-                    {origin[0].toFixed(2)}° N ·{" "}
-                    {origin[1].toFixed(2)}° E
+                      {origin[0].toFixed(2)}° N ·{" "}
+                      {origin[1].toFixed(2)}° E
 
-                  </Tooltip>
+                    </Tooltip>
 
-                </CircleMarker>
+                  </CircleMarker>
+                )}
 
                 {/* ==========================================
                     +6 HOUR POSITION
@@ -581,7 +604,7 @@ function Forecast() {
                 </span>
 
                 <strong>
-                  BAY OF BENGAL
+                  {driftData?.region || driftData?.slick_id || "LAGRANGIAN SIMULATION"}
                 </strong>
 
               </div>
@@ -632,8 +655,7 @@ function Forecast() {
 
               <div className="map-coordinates">
 
-                {origin[0].toFixed(2)}° N&nbsp;&nbsp;
-                {origin[1].toFixed(2)}° E
+                {origin ? `${origin[0].toFixed(2)}° N   ${origin[1].toFixed(2)}° E` : "--"}
 
               </div>
 
@@ -670,11 +692,11 @@ function Forecast() {
             <div className="origin-coordinate">
 
               <strong>
-                {origin[0].toFixed(2)}° N
+                {origin ? `${origin[0].toFixed(2)}° N` : "--"}
               </strong>
 
               <strong>
-                {origin[1].toFixed(2)}° E
+                {origin ? `${origin[1].toFixed(2)}° E` : "--"}
               </strong>
 
             </div>
@@ -717,11 +739,11 @@ function Forecast() {
               </span>
 
               <strong>
-                12.4 km²
+                {detectData?.area_km2 != null ? `${detectData.area_km2} km²` : "--"}
               </strong>
 
               <small>
-                Detected Sentinel-1 slick
+                {detectData?.slick_id ? `Slick ID: ${detectData.slick_id}` : "Detected slick extent"}
               </small>
 
             </div>
@@ -751,7 +773,7 @@ function Forecast() {
                 </span>
 
                 <strong>
-                  READY
+                  {driftData?.forecast_polygons?.length ? "READY" : "--"}
                 </strong>
 
               </div>
@@ -760,14 +782,16 @@ function Forecast() {
 
                 <div
                   style={{
-                    width: "78%",
+                    width: driftData?.forecast_polygons?.length ? "100%" : "0%",
                   }}
                 ></div>
 
               </div>
 
               <small>
-                Forecast zones received from drift service
+                {driftData?.forecast_polygons?.length
+                  ? `${driftData.forecast_polygons.length} forecast horizons simulated`
+                  : "--"}
               </small>
 
             </div>
@@ -901,8 +925,9 @@ function Forecast() {
               </span>
 
               <strong>
-                {origin[0].toFixed(2)}° N ·{" "}
-                {origin[1].toFixed(2)}° E
+                {origin
+                  ? `${origin[0].toFixed(2)}° N · ${origin[1].toFixed(2)}° E`
+                  : "--"}
               </strong>
 
             </div>
