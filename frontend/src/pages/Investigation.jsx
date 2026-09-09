@@ -67,47 +67,11 @@ function Investigation() {
     zones: true,
   });
 
-  const [selectedVessel, setSelectedVessel] = useState("Tanker A");
+  const [selectedVessel, setSelectedVessel] = useState("");
   const [time, setTime] = useState(62);
 
   // --------------------------------------------------
-  // DEMO VESSEL POSITIONS
-  //
-  // Contract C provides vessel identity/ranking but
-  // does NOT contain latitude/longitude.
-  // So these positions remain temporary demo positions.
-  // Later they can be replaced by Member 3's AIS data.
-  // --------------------------------------------------
-
-  const vesselPositions = [
-    {
-      name: "Tanker A",
-      lat: 13.18,
-      lng: 80.43,
-      type: "Tanker",
-    },
-    {
-      name: "Cargo B",
-      lat: 13.26,
-      lng: 80.18,
-      type: "Cargo",
-    },
-    {
-      name: "Tanker C",
-      lat: 12.91,
-      lng: 80.38,
-      type: "Tanker",
-    },
-    {
-      name: "Fishing D",
-      lat: 13.31,
-      lng: 80.51,
-      type: "Fishing",
-    },
-  ];
-
-  // --------------------------------------------------
-  // FETCH FASTAPI DATA
+  // FETCH PIPELINE DATA (Single Request)
   // --------------------------------------------------
 
   useEffect(() => {
@@ -116,42 +80,41 @@ function Investigation() {
         setLoading(true);
         setApiError("");
 
-        const [detectResponse, driftResponse, attributeResponse] =
-          await Promise.all([
-            fetch("http://127.0.0.1:8001/api/detect"),
-            fetch("http://127.0.0.1:8001/api/drift"),
-            fetch("http://127.0.0.1:8001/api/attribute"),
-          ]);
+        const response = await fetch("/api/pipeline?demo=true", {
+          method: "POST",
+        });
 
-        if (
-          !detectResponse.ok ||
-          !driftResponse.ok ||
-          !attributeResponse.ok
-        ) {
-          throw new Error("FastAPI request failed");
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.detail || `Pipeline request failed (${response.status})`);
         }
 
-        const detect = await detectResponse.json();
-        const drift = await driftResponse.json();
-        const attribute = await attributeResponse.json();
+        const data = await response.json();
 
-        setDetectData(detect);
-        setDriftData(drift);
-        setAttributeData(attribute);
+        setDetectData(data.contract_a);
+        setDriftData(data.contract_b);
+        setAttributeData(data.contract_c);
 
         // Automatically select the highest-ranked suspect
-        if (attribute?.suspects?.length > 0) {
-          const topSuspect = [...attribute.suspects].sort(
-            (a, b) => b.score - a.score
-          )[0];
+        const suspectList =
+          data.contract_c?.ranked_suspects ??
+          data.contract_c?.suspects ??
+          [];
 
-          setSelectedVessel(topSuspect.vessel_name);
+        if (suspectList.length > 0) {
+          const topSuspect = suspectList[0];
+          const topName =
+            topSuspect.vessel_name ??
+            topSuspect.vessel_metadata?.vessel_name ??
+            `MMSI ${topSuspect.mmsi ?? 1}`;
+
+          setSelectedVessel(topName);
         }
       } catch (error) {
-        console.error("MARIS API Error:", error);
+        console.error("MARIS Pipeline API Error:", error);
 
         setApiError(
-          "Unable to connect to MARIS FastAPI backend."
+          error.message || "Unable to connect to MARIS FastAPI backend pipeline."
         );
       } finally {
         setLoading(false);
@@ -190,12 +153,19 @@ function Investigation() {
     driftData?.forecast_polygons || [];
 
   const suspects =
-    attributeData?.suspects || [];
+    attributeData?.ranked_suspects ??
+    attributeData?.suspects ??
+    [];
 
   const selectedSuspect =
-    suspects.find(
-      (suspect) => suspect.vessel_name === selectedVessel
-    ) || suspects[0];
+    suspects.find((suspect) => {
+      const name =
+        suspect.vessel_metadata?.vessel_name ??
+        suspect.vessel_name ??
+        suspect.name ??
+        `MMSI ${suspect.mmsi}`;
+      return name === selectedVessel;
+    }) || suspects[0];
 
   // --------------------------------------------------
   // LOADING STATE
@@ -352,7 +322,16 @@ function Investigation() {
         <section className="map-wrapper">
 
           <MapContainer
-           center={[33.17, 30.30]}
+            key={
+              driftData?.estimated_origin?.point
+                ? `${driftData.estimated_origin.point[1]}-${driftData.estimated_origin.point[0]}`
+                : "investigation-map"
+            }
+            center={
+              driftData?.estimated_origin?.point
+                ? [driftData.estimated_origin.point[1], driftData.estimated_origin.point[0]]
+                : [19.28, 71.86]
+            }
             zoom={9}
             zoomControl={false}
             className="maris-map"
@@ -384,12 +363,7 @@ function Investigation() {
                   <br />
 
                   Area:{" "}
-                  {detectData?.area_km2 ?? "--"} km²
-
-                  <br />
-
-                  Length:{" "}
-                  {detectData?.length_km ?? "--"} km
+                  {detectData?.area_km2 != null ? `${detectData.area_km2} km²` : "--"}
 
                   <br />
 
@@ -402,8 +376,15 @@ function Investigation() {
 
                   <br />
 
-                  Source:{" "}
-                  {detectData?.source_image ?? "--"}
+                  Slick ID:{" "}
+                  {detectData?.slick_id ?? "--"}
+
+                  {detectData?.demo_mode && (
+                    <>
+                      <br />
+                      <small style={{ color: "#23c0e5" }}>Demo Contract A Fixture</small>
+                    </>
+                  )}
                 </Popup>
               </Polygon>
             )}
@@ -475,33 +456,54 @@ function Investigation() {
               })}
 
             {/* ----------------------------------------
-                VESSELS
-                Ranking comes from /api/attribute.
-                Positions are temporary demo AIS positions.
+                VESSELS FROM CONTRACT C
+                Real CPA coordinates and vessel ranking
             ----------------------------------------- */}
 
             {layers.vessels &&
-              vesselPositions.map((vessel) => {
+              suspects.map((suspect, idx) => {
+                const cpa = suspect.closest_encounter?.vessel_point_at_cpa;
+                if (!cpa || !Array.isArray(cpa) || cpa.length < 2) return null;
+                const pos = [cpa[1], cpa[0]];
 
-                const suspect = suspects.find(
-                  (item) =>
-                    item.vessel_name === vessel.name
-                );
+                const vName =
+                  suspect.vessel_metadata?.vessel_name ??
+                  suspect.vessel_name ??
+                  suspect.name ??
+                  `MMSI ${suspect.mmsi ?? idx + 1}`;
 
-                const score = suspect
-                  ? Math.round(suspect.score * 100)
-                  : 0;
+                const vType =
+                  suspect.vessel_metadata?.vessel_type ??
+                  suspect.vessel_type ??
+                  suspect.type ??
+                  "Vessel";
 
-                const isSelected =
-                  vessel.name === selectedVessel;
+                const rawScore =
+                  suspect.composite_threat_score ?? suspect.score ?? 0;
+                const score =
+                  rawScore <= 1
+                    ? Math.round(rawScore * 100)
+                    : Math.round(rawScore);
+
+                const isSelected = vName === selectedVessel;
+
+                const proximity =
+                  suspect.closest_encounter?.min_distance_to_origin_km != null
+                    ? `${suspect.closest_encounter.min_distance_to_origin_km.toFixed(1)} km`
+                    : suspect.proximity_km != null
+                    ? `${suspect.proximity_km} km`
+                    : "--";
+
+                const flags =
+                  suspect.anomaly_indicators ??
+                  (Array.isArray(suspect.anomaly_flags)
+                    ? suspect.anomaly_flags
+                    : []);
 
                 return (
                   <CircleMarker
-                    key={vessel.name}
-                    center={[
-                      vessel.lat,
-                      vessel.lng,
-                    ]}
+                    key={`vessel-${suspect.mmsi ?? idx}`}
+                    center={pos}
                     radius={isSelected ? 8 : 5}
                     pathOptions={{
                       color: isSelected
@@ -516,47 +518,76 @@ function Investigation() {
                     }}
                     eventHandlers={{
                       click: () =>
-                        setSelectedVessel(
-                          vessel.name
-                        ),
+                        setSelectedVessel(vName),
                     }}
                   >
 
                     <Popup>
 
                       <strong>
-                        {vessel.name}
+                        {vName}
                       </strong>
 
                       <br />
 
-                      Type: {vessel.type}
+                      MMSI: {suspect.mmsi ?? "--"}
+
+                      <br />
+
+                      Type: {vType}
 
                       <br />
 
                       Attribution Score:{" "}
-                      {score}/100
+                      {score}/100 ({suspect.threat_level ?? "ASSESSED"})
 
-                      {suspect && (
-                        <>
-                          <br />
-                          Proximity:{" "}
-                          {suspect.proximity_km} km
+                      <br />
 
-                          <br />
+                      Proximity to Origin:{" "}
+                      {proximity}
 
-                          Flags:{" "}
-                          {suspect.anomaly_flags?.length
-                            ? suspect.anomaly_flags.join(
-                                ", "
-                              )
-                            : "None"}
-                        </>
-                      )}
+                      <br />
+
+                      Flags:{" "}
+                      {flags.length ? flags.join(", ") : "None"}
 
                     </Popup>
 
                   </CircleMarker>
+                );
+              })}
+
+            {/* ----------------------------------------
+                VESSEL TRAJECTORIES FROM CONTRACT C
+            ----------------------------------------- */}
+
+            {layers.vessels &&
+              suspects.map((suspect, idx) => {
+                const trajCoords =
+                  suspect.trajectory_geojson?.geometry?.coordinates ??
+                  suspect.trajectory_geojson?.coordinates;
+                if (!trajCoords || !Array.isArray(trajCoords) || trajCoords.length < 2) return null;
+                const latLngs = geoJsonToLeaflet(trajCoords);
+                return (
+                  <Polyline
+                    key={`traj-${suspect.mmsi ?? idx}`}
+                    positions={latLngs}
+                    pathOptions={{
+                      color: suspect.threat_level === "HIGH" ? "#ff4d4d" : "#4ed6e8",
+                      weight: 1.5,
+                      dashArray: "4 6",
+                      opacity: 0.7,
+                    }}
+                  >
+                    <Popup>
+                      <strong>
+                        AIS Track:{" "}
+                        {suspect.vessel_name ??
+                          suspect.vessel_metadata?.vessel_name ??
+                          `MMSI ${suspect.mmsi}`}
+                      </strong>
+                    </Popup>
+                  </Polyline>
                 );
               })}
 
@@ -668,7 +699,8 @@ function Investigation() {
             </div>
 
             <div className="selected-name">
-              {selectedSuspect?.vessel_name ||
+              {selectedSuspect?.vessel_name ??
+                selectedSuspect?.vessel_metadata?.vessel_name ??
                 selectedVessel}
             </div>
 
@@ -676,7 +708,15 @@ function Investigation() {
               Score{" "}
               {selectedSuspect
                 ? Math.round(
-                    selectedSuspect.score * 100
+                    (selectedSuspect.composite_threat_score ??
+                      selectedSuspect.score ??
+                      0) <= 1
+                      ? (selectedSuspect.composite_threat_score ??
+                          selectedSuspect.score ??
+                          0) * 100
+                      : (selectedSuspect.composite_threat_score ??
+                          selectedSuspect.score ??
+                          0)
                   )
                 : "--"}
               /100
