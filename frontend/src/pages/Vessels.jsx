@@ -14,58 +14,64 @@ function SidebarItem({ icon, label, active, onClick }) {
   );
 }
 
-// Convert API vessel data into the format used by the UI
+// Convert official Contract C vessel data into the format used by the UI
 function normalizeVessel(vessel, index) {
-  let score = Number(vessel.score ?? 0);
+  const rawScore = Number(vessel.composite_threat_score ?? vessel.score ?? 0);
+  const score = rawScore <= 1 ? Math.round(rawScore * 100) : Math.round(rawScore);
 
-// API may return attribution score as 0–1.
-// Convert it to 0–100 for the UI.
-if (score > 0 && score <= 1) {
-  score = score * 100;
-}
+  const status =
+    vessel.threat_level ??
+    (score >= 80 ? "HIGH" : score >= 60 ? "MEDIUM" : "LOW");
 
-  let status = "LOW";
+  const metadata = vessel.vessel_metadata || {};
+  const name =
+    vessel.vessel_name ??
+    metadata.vessel_name ??
+    `MMSI ${vessel.mmsi ?? "--"}`;
 
-  if (score >= 80) {
-    status = "HIGH";
-  } else if (score >= 60) {
-    status = "MEDIUM";
-  }
+  const mmsi = vessel.mmsi ?? "--";
+
+  const type =
+    vessel.vessel_type ??
+    metadata.vessel_type ??
+    "Vessel";
+
+  const encounter = vessel.closest_encounter || {};
+  const proximity =
+    encounter.min_distance_to_origin_km != null
+      ? `${encounter.min_distance_to_origin_km.toFixed(1)} km`
+      : vessel.proximity_km != null
+      ? `${vessel.proximity_km} km`
+      : "--";
+
+  const flags =
+    Array.isArray(vessel.anomaly_indicators)
+      ? vessel.anomaly_indicators
+      : Array.isArray(vessel.anomaly_flags)
+      ? vessel.anomaly_flags
+      : [];
+
+  const evidencePkg = vessel.evidence_package || {};
+  const evidence =
+    evidencePkg.summary ??
+    vessel.evidence_text ??
+    "No evidence text available from the attribution service.";
+
+  const recommendation = evidencePkg.recommended_action ?? "";
 
   return {
-    rank: String(index + 1).padStart(2, "0"),
-
-    name:
-      vessel.vessel_name ??
-      vessel.name ??
-      "Unknown Vessel",
-
-    mmsi:
-      vessel.mmsi ??
-      "--",
-
-    type:
-      vessel.vessel_type ??
-      vessel.type ??
-      "Vessel",
-
+    rank: String(vessel.rank ?? (index + 1)).padStart(2, "0"),
+    name,
+    mmsi,
+    type,
     score,
-
-    proximity:
-      vessel.proximity_km != null
-        ? `${vessel.proximity_km} km`
-        : "--",
-
+    proximity,
     status,
-
-    flags:
-      Array.isArray(vessel.anomaly_flags)
-        ? vessel.anomaly_flags
-        : [],
-
-    evidence:
-      vessel.evidence_text ??
-      "No evidence text available from the attribution service.",
+    flags,
+    evidence,
+    recommendation,
+    cpaPoint: encounter.vessel_point_at_cpa,
+    trajectory: vessel.trajectory_geojson,
   };
 }
 
@@ -77,7 +83,7 @@ function Vessels() {
   const [apiError, setApiError] = useState("");
 
   // ==================================================
-  // FASTAPI /api/attribute
+  // PIPELINE ATTRIBUTION /api/pipeline
   // ==================================================
 
   useEffect(() => {
@@ -86,30 +92,28 @@ function Vessels() {
         setLoading(true);
         setApiError("");
 
-        const response = await fetch(
-          "http://127.0.0.1:8001/api/attribute"
-        );
+        const response = await fetch("/api/pipeline?demo=true", {
+          method: "POST",
+        });
 
         if (!response.ok) {
-          throw new Error("Attribution API request failed");
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.detail || `Attribution API request failed (${response.status})`);
         }
 
         const data = await response.json();
+        const contractC = data.contract_c ?? data;
 
-        // Contract C uses "suspects"
-        const suspects = Array.isArray(data)
-          ? data
-          : data.suspects ?? [];
+        // Use official Contract C ranked_suspects
+        const suspects = Array.isArray(contractC.ranked_suspects)
+          ? contractC.ranked_suspects
+          : Array.isArray(contractC.suspects)
+          ? contractC.suspects
+          : [];
 
-        const normalized = suspects
-          .map((vessel, index) =>
-            normalizeVessel(vessel, index)
-          )
-          .sort((a, b) => b.score - a.score)
-          .map((vessel, index) => ({
-            ...vessel,
-            rank: String(index + 1).padStart(2, "0"),
-          }));
+        const normalized = suspects.map((vessel, index) =>
+          normalizeVessel(vessel, index)
+        );
 
         setVessels(normalized);
 
@@ -120,7 +124,7 @@ function Vessels() {
         );
 
         setApiError(
-          "Unable to connect to MARIS FastAPI attribution service."
+          error.message || "Unable to connect to MARIS FastAPI attribution service."
         );
       } finally {
         setLoading(false);
