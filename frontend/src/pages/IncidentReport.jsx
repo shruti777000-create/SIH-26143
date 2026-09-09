@@ -37,9 +37,8 @@ function IncidentReport() {
         slick_id: detection.slick_id,
         timestamp_utc: detection.timestamp_utc,
         area_km2: detection.area_km2,
-        length_km: detection.length_km,
         confidence: detection.confidence,
-        source_image: detection.source_image,
+        demo_mode: detection.demo_mode,
       },
       geometry,
     };
@@ -63,9 +62,11 @@ function IncidentReport() {
   }
 
   function downloadCSV() {
-    const vesselList = Array.isArray(attribute)
-      ? attribute
-      : attribute?.suspects ?? [];
+    const vesselList = Array.isArray(attribute?.ranked_suspects)
+      ? attribute.ranked_suspects
+      : Array.isArray(attribute?.suspects)
+      ? attribute.suspects
+      : [];
 
     if (vesselList.length === 0) {
       alert("No vessel attribution data available.");
@@ -78,27 +79,36 @@ function IncidentReport() {
       "MMSI",
       "Score",
       "Proximity (km)",
+      "Threat Level",
       "Anomaly Flags",
       "Evidence",
     ];
 
     const rows = vesselList.map((vessel, index) => {
-      let score = Number(vessel.score ?? 0);
-
-      if (score > 0 && score <= 1) {
-        score = score * 100;
-      }
+      const rawScore = Number(vessel.composite_threat_score ?? vessel.score ?? 0);
+      const score = rawScore <= 1 ? Math.round(rawScore * 100) : Math.round(rawScore);
+      const encounter = vessel.closest_encounter || {};
+      const prox = encounter.min_distance_to_origin_km != null
+        ? encounter.min_distance_to_origin_km.toFixed(1)
+        : vessel.proximity_km != null
+        ? vessel.proximity_km
+        : "";
+      const flags = Array.isArray(vessel.anomaly_indicators)
+        ? vessel.anomaly_indicators.join("; ")
+        : Array.isArray(vessel.anomaly_flags)
+        ? vessel.anomaly_flags.join("; ")
+        : "";
+      const evidence = vessel.evidence_package?.summary ?? vessel.evidence_text ?? "";
 
       return [
-        index + 1,
-        vessel.vessel_name ?? vessel.name ?? "",
+        vessel.rank ?? index + 1,
+        vessel.vessel_name ?? vessel.vessel_metadata?.vessel_name ?? `MMSI ${vessel.mmsi ?? ""}`,
         vessel.mmsi ?? "",
-        Math.round(score),
-        vessel.proximity_km ?? "",
-        Array.isArray(vessel.anomaly_flags)
-          ? vessel.anomaly_flags.join("; ")
-          : vessel.anomaly_flags ?? "",
-        vessel.evidence_text ?? "",
+        score,
+        prox,
+        vessel.threat_level ?? "",
+        flags,
+        evidence,
       ];
     });
 
@@ -134,7 +144,7 @@ function IncidentReport() {
   const [apiError, setApiError] = useState("");
 
   // =========================================================
-  // LOAD ALL MARIS INTELLIGENCE
+  // LOAD ALL MARIS INTELLIGENCE (Single Request)
   // =========================================================
 
   useEffect(() => {
@@ -143,33 +153,25 @@ function IncidentReport() {
         setLoading(true);
         setApiError("");
 
-        const [detectResponse, driftResponse, attributeResponse] =
-          await Promise.all([
-            fetch("http://127.0.0.1:8001/api/detect"),
-            fetch("http://127.0.0.1:8001/api/drift"),
-            fetch("http://127.0.0.1:8001/api/attribute"),
-          ]);
+        const response = await fetch("/api/pipeline?demo=true", {
+          method: "POST",
+        });
 
-        if (
-          !detectResponse.ok ||
-          !driftResponse.ok ||
-          !attributeResponse.ok
-        ) {
-          throw new Error("One or more MARIS APIs failed");
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.detail || `MARIS pipeline request failed (${response.status})`);
         }
 
-        const detectData = await detectResponse.json();
-        const driftData = await driftResponse.json();
-        const attributeData = await attributeResponse.json();
+        const data = await response.json();
 
-        setDetect(detectData);
-        setDrift(driftData);
-        setAttribute(attributeData);
+        setDetect(data.contract_a);
+        setDrift(data.contract_b);
+        setAttribute(data.contract_c);
       } catch (error) {
         console.error("MARIS Report API Error:", error);
 
         setApiError(
-          "Unable to load investigation data from the MARIS FastAPI service."
+          error.message || "Unable to load investigation data from the MARIS FastAPI service."
         );
       } finally {
         setLoading(false);
@@ -188,27 +190,31 @@ function IncidentReport() {
     : detect ?? {};
 
   const spillArea =
-    detection.area_km2 ?? 12.4;
+    detection.area_km2 != null ? detection.area_km2 : "--";
 
   const spillLength =
-    detection.length_km ?? 21.3;
+    detection.length_km != null ? `${detection.length_km} km` : "--";
 
   const detectionConfidenceRaw =
-    Number(detection.confidence ?? 0.91);
+    detection.confidence != null ? Number(detection.confidence) : null;
 
   const detectionConfidence =
-    detectionConfidenceRaw <= 1
-      ? Math.round(detectionConfidenceRaw * 100)
-      : Math.round(detectionConfidenceRaw);
+    detectionConfidenceRaw != null
+      ? detectionConfidenceRaw <= 1
+        ? Math.round(detectionConfidenceRaw * 100)
+        : Math.round(detectionConfidenceRaw)
+      : "--";
 
   const incidentId =
-    detection.slick_id ?? "SLICK-MARIS-001";
+    detection.slick_id ?? "--";
 
   const detectionTime =
-    detection.timestamp_utc ?? "19 MAR 2019 · 18:11 UTC";
+    detection.timestamp_utc
+      ? new Date(detection.timestamp_utc).toUTCString()
+      : "--";
 
   const sourceImage =
-    detection.source_image ?? "Sentinel-1 GRD";
+    detection.source_image ?? (detection.demo_mode ? "Sentinel-1 SAR (Demo Fixture)" : "Sentinel-1 SAR");
 
   // =========================================================
   // NORMALIZE DRIFT DATA
@@ -219,64 +225,56 @@ function IncidentReport() {
   const estimatedOrigin =
     driftData.estimated_origin ?? {};
 
-  const originCoordinates =
-    estimatedOrigin.coordinates ??
-    driftData.origin_coordinates ??
-    [13.08, 80.27];
+  const originPoint = estimatedOrigin.point; // [lon, lat]
 
   const originLat =
-    Array.isArray(originCoordinates)
-      ? originCoordinates[1] ?? 13.08
-      : estimatedOrigin.lat ?? 13.08;
+    originPoint && originPoint.length >= 2 ? originPoint[1] : null;
 
   const originLng =
-    Array.isArray(originCoordinates)
-      ? originCoordinates[0] ?? 80.27
-      : estimatedOrigin.lng ?? 80.27;
+    originPoint && originPoint.length >= 2 ? originPoint[0] : null;
 
-  const displacement =
-    driftData.expected_displacement_km ??
-    driftData.displacement_km ??
-    18.7;
+  const displacementKm =
+    attribute?.spill_context?.backtrack_length_km != null
+      ? `${attribute.spill_context.backtrack_length_km.toFixed(1)}`
+      : null;
 
-  const forecastConfidenceRaw =
-    Number(driftData.forecast_confidence ?? 0.78);
+  const displacement = displacementKm != null
+    ? `${displacementKm} km`
+    : driftData.backtrack_track?.coordinates?.length
+    ? `${driftData.backtrack_track.coordinates.length} waypoints`
+    : "--";
+
+  const displacementUnit = "";
 
   const forecastConfidence =
-    forecastConfidenceRaw <= 1
-      ? Math.round(forecastConfidenceRaw * 100)
-      : Math.round(forecastConfidenceRaw);
+    driftData.forecast_polygons?.length
+      ? `${driftData.forecast_polygons.length} forecast horizons (+6h, +24h)`
+      : "OpenDrift hindcast";
 
   // =========================================================
   // NORMALIZE ATTRIBUTION DATA
   // =========================================================
 
-  const suspects = Array.isArray(attribute)
-    ? attribute
-    : attribute?.suspects ?? [];
-
-  const sortedSuspects = [...suspects].sort(
-    (a, b) =>
-      Number(b.score ?? 0) -
-      Number(a.score ?? 0)
-  );
+  const suspects = Array.isArray(attribute?.ranked_suspects)
+    ? attribute.ranked_suspects
+    : Array.isArray(attribute?.suspects)
+    ? attribute.suspects
+    : [];
 
   const topSuspect =
-    sortedSuspects[0] ?? {};
+    suspects[0] ?? {};
 
-  let suspectScore =
-    Number(topSuspect.score ?? 0);
+  const rawScore = Number(topSuspect.composite_threat_score ?? topSuspect.score ?? 0);
+  const suspectScore =
+    topSuspect.composite_threat_score != null || topSuspect.score != null
+      ? (rawScore <= 1 ? Math.round(rawScore * 100) : Math.round(rawScore))
+      : "--";
 
-  if (suspectScore > 0 && suspectScore <= 1) {
-    suspectScore *= 100;
-  }
-
-  suspectScore = Math.round(suspectScore);
-
+  const metadata = topSuspect.vessel_metadata || {};
   const suspectName =
     topSuspect.vessel_name ??
-    topSuspect.name ??
-    "Unknown Vessel";
+    metadata.vessel_name ??
+    (topSuspect.mmsi ? `MMSI ${topSuspect.mmsi}` : "--");
 
   const suspectMmsi =
     topSuspect.mmsi ??
@@ -284,21 +282,31 @@ function IncidentReport() {
 
   const suspectType =
     topSuspect.vessel_type ??
-    topSuspect.type ??
-    "Vessel";
-
-  const suspectProximity =
-    topSuspect.proximity_km ??
+    metadata.vessel_type ??
     "--";
 
+  const encounter = topSuspect.closest_encounter || {};
+  const suspectProximity =
+    encounter.min_distance_to_origin_km != null
+      ? `${encounter.min_distance_to_origin_km.toFixed(1)} km`
+      : topSuspect.proximity_km != null
+      ? `${topSuspect.proximity_km} km`
+      : "--";
+
   const anomalyFlags =
-    Array.isArray(topSuspect.anomaly_flags)
+    Array.isArray(topSuspect.anomaly_indicators)
+      ? topSuspect.anomaly_indicators
+      : Array.isArray(topSuspect.anomaly_flags)
       ? topSuspect.anomaly_flags
       : [];
 
+  const evidencePkg = topSuspect.evidence_package || {};
   const evidenceText =
+    evidencePkg.summary ??
     topSuspect.evidence_text ??
     "No additional attribution evidence available.";
+
+  const recommendedAction = evidencePkg.recommended_action ?? "";
 
   // =========================================================
   // LOADING SCREEN
@@ -518,8 +526,9 @@ function IncidentReport() {
             <div>
               <span>LOCATION</span>
               <strong>
-                {Number(originLat).toFixed(2)}° N ·{" "}
-                {Number(originLng).toFixed(2)}° E
+                {originLat != null && originLng != null
+                  ? `${Number(originLat).toFixed(2)}° N · ${Number(originLng).toFixed(2)}° E`
+                  : "--"}
               </strong>
             </div>
 
@@ -570,8 +579,7 @@ function IncidentReport() {
               <span>PERIMETER</span>
 
               <strong>
-                {detection.perimeter_km ?? 48.7}{" "}
-                <small>km</small>
+                {detection.perimeter_km != null ? `${detection.perimeter_km.toFixed(2)} km` : "--"}
               </strong>
 
               <p>
@@ -585,7 +593,7 @@ function IncidentReport() {
               <span>ESTIMATED LENGTH</span>
 
               <strong>
-                {spillLength} <small>km</small>
+                {detection.length_km != null ? `${detection.length_km} km` : "--"}
               </strong>
 
               <p>
@@ -599,8 +607,7 @@ function IncidentReport() {
               <span>ESTIMATED AGE</span>
 
               <strong>
-                {detection.estimated_age_hours ?? 5.2}{" "}
-                <small>hrs</small>
+                {detection.estimated_age_hours != null ? `${detection.estimated_age_hours} hrs` : "--"}
               </strong>
 
               <p>
@@ -686,16 +693,17 @@ function IncidentReport() {
 
                 {displacement}
 
-                <small>
-                  km
-                </small>
+                {displacementUnit && (
+                  <small>
+                    {displacementUnit}
+                  </small>
+                )}
 
               </div>
 
               <p>
-                Estimated displacement over the 24-hour
-                forecast period based on ocean current
-                and wind-driven transport.
+                Estimated displacement over the forecast period
+                based on ocean current and wind transport ({forecastConfidence}).
               </p>
 
               <div className="finding-meta">
@@ -783,7 +791,7 @@ function IncidentReport() {
                 </span>
 
                 <strong>
-                  {driftData.impact_zone_km2 ?? 42.7} km²
+                  {driftData.impact_zone_km2 != null ? `${driftData.impact_zone_km2} km²` : "--"}
                 </strong>
 
               </div>
@@ -825,6 +833,7 @@ function IncidentReport() {
 
               <small>
                 MMSI {suspectMmsi} · {suspectType}
+                {suspectProximity !== "--" ? ` · CPA: ${suspectProximity}` : ""}
               </small>
 
             </div>
@@ -953,15 +962,14 @@ function IncidentReport() {
               </span>
 
               <h3>
-                High-confidence oil spill detected in the Bay of Bengal
+                Oil spill detection and vessel attribution assessment
               </h3>
 
               <p>
                 Sentinel-1 SAR analysis identified a{" "}
-                {spillArea} km² slick near the Chennai
-                coastline. Hindcast analysis estimates the
-                spill origin and subsequent movement, while
-                AIS analysis identified{" "}
+                {spillArea} km² slick ({incidentId}). OpenDrift
+                hindcast analysis estimates the spill origin and subsequent
+                movement, while AIS intelligence identified{" "}
                 <strong>{suspectName}</strong> as the
                 leading vessel candidate.
               </p>
@@ -1074,12 +1082,11 @@ function IncidentReport() {
               </div>
 
               <strong>
-                Investigate vessel activity
+                Enforcement / Vessel Action
               </strong>
 
               <p>
-                Review {suspectName}'s AIS history and
-                movement during the release window.
+                {recommendedAction || `Review ${suspectName}'s AIS history and movement during the release window.`}
               </p>
 
             </div>
