@@ -14,7 +14,7 @@ function SidebarItem({ icon, label, active, onClick }) {
   );
 }
 
-function DetectionImage({ segmented = false }) {
+function DetectionImage({ segmented = false, demoMode = false }) {
   return (
     <div className="detection-image-wrap">
       <img
@@ -81,7 +81,7 @@ function DetectionImage({ segmented = false }) {
       )}
 
       <div className="image-corner-tag">
-        {segmented ? "AI SEGMENTATION" : "SENTINEL-1 GRD"}
+        {segmented ? (demoMode ? "DEMO DATA" : "AI SEGMENTATION") : "SENTINEL-1 GRD"}
       </div>
     </div>
   );
@@ -108,12 +108,13 @@ export default function Detection() {
         setLoading(true);
         setApiError("");
 
-        const response = await fetch(
-          "http://127.0.0.1:8001/api/detect"
-        );
+        const response = await fetch("/api/detect?demo=true", {
+          method: "POST",
+        });
 
         if (!response.ok) {
-          throw new Error("Detection API request failed");
+          const errJson = await response.json().catch(() => ({}));
+          throw new Error(errJson.detail || `Detection API request failed (${response.status})`);
         }
 
         const data = await response.json();
@@ -123,7 +124,7 @@ export default function Detection() {
         console.error("MARIS Detection API Error:", error);
 
         setApiError(
-          "Unable to connect to MARIS FastAPI backend."
+          error.message || "Unable to connect to MARIS FastAPI backend."
         );
       } finally {
         setLoading(false);
@@ -137,9 +138,8 @@ export default function Detection() {
   // API VALUES
   // --------------------------------------------------
 
-  const area = detectData?.area_km2 ?? "--";
+  const area = detectData?.area_km2 != null ? detectData.area_km2 : "--";
 
-  const length = detectData?.perimeter_km ?? "--";
 
   const confidence =
     detectData?.confidence != null
@@ -147,10 +147,10 @@ export default function Detection() {
       : "--";
 
   const sourceImage =
-    detectData?.source_image ?? "Sentinel-1 GRD";
+    detectData?.source_image ?? (detectData?.demo_mode ? "Sentinel-1 GRD (Demo Fixture)" : "Sentinel-1 GRD");
 
   const slickId =
-    detectData?.slick_id ?? "SLICK-MARIS-001";
+    detectData?.slick_id ?? "--";
 
   const timestamp = detectData?.timestamp_utc
     ? new Date(detectData.timestamp_utc)
@@ -422,11 +422,11 @@ export default function Detection() {
                 <div>
 
                   <h2>
-                    AI Detection (Segmentation)
+                    {detectData?.demo_mode ? "Demo Detection (Segmentation)" : "AI Detection (Segmentation)"}
                   </h2>
 
                   <p>
-                    U-Net predicted oil slick
+                    {detectData?.demo_mode ? "Deterministic demonstration slick fixture" : "U-Net predicted oil slick"}
                   </p>
 
                 </div>
@@ -434,12 +434,12 @@ export default function Detection() {
               </div>
 
               <span className="panel-label detected">
-                DETECTED
+                {detectData?.demo_mode ? "DEMO FIXTURE" : "DETECTED"}
               </span>
 
             </div>
 
-            <DetectionImage segmented />
+            <DetectionImage segmented demoMode={Boolean(detectData?.demo_mode)} />
 
           </div>
 
@@ -485,39 +485,34 @@ export default function Detection() {
               </div>
 
               <div className="geometry-row">
-                <span>Perimeter</span>
+                <span>Confidence</span>
 
                 <strong>
-                  {detectData?.perimeter_km?.toFixed(2) ?? "—"}
-                  <small> km</small>
+                  {confidence}%
                 </strong>
               </div>
 
               <div className="geometry-row">
-                <span>Length</span>
+                <span>Slick Identifier</span>
 
                 <strong>
-                  
-                  Not calculated
-                  
+                  {slickId}
                 </strong>
               </div>
 
               <div className="geometry-row">
-                <span>Width (Max)</span>
+                <span>Timestamp (UTC)</span>
 
                 <strong>
-                  2.1
-                  <small> km</small>
+                  {formattedTimestamp}
                 </strong>
               </div>
 
               <div className="geometry-row">
-                <span>Estimated Age</span>
+                <span>Data Source</span>
 
                 <strong>
-                  5.2
-                  <small> hrs</small>
+                  {detectData?.demo_mode ? "Demo Fixture" : "SAR Acquisition"}
                 </strong>
               </div>
 
@@ -656,20 +651,20 @@ export default function Detection() {
 
             </div>
 
-            {/* AGE */}
+            {/* MODE */}
 
             <div className="stat-card">
 
               <span>
-                ESTIMATED AGE
+                DETECTION MODE
               </span>
 
-              <strong>
-                5.2
+              <strong style={{ fontSize: "14px", color: "#25bde5" }}>
+                {detectData?.demo_mode ? "DEMO DATA" : "AI MODEL"}
               </strong>
 
               <small>
-                hours
+                {detectData?.demo_mode ? "Deterministic Fixture" : "Real U-Net"}
               </small>
 
             </div>
@@ -683,11 +678,11 @@ export default function Detection() {
               </span>
 
               <strong className="text-stat">
-                S1 GRD
+                {detectData?.demo_mode ? "DEMO" : "S1 SAR"}
               </strong>
 
               <small>
-                {sourceImage}
+                {detectData?.demo_mode ? "Synthetic Contract A" : (detectData?.source_image ?? "Sentinel-1 SAR")}
               </small>
 
             </div>
@@ -707,7 +702,7 @@ export default function Detection() {
               </span>
 
               <strong>
-                U-Net segmentation · Geometry extraction
+                {detectData?.demo_mode ? "Deterministic fixture · Geometry extracted" : "U-Net segmentation · Geometry extraction"}
               </strong>
 
             </div>
